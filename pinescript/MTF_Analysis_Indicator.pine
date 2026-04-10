@@ -38,12 +38,13 @@ i_st_period   = input.int(10,   "Supertrend ATR Period",   minval=1,   maxval=50
 
 i_min_strong  = input.int(5,    "TFs for STRONG signal",   minval=3,   maxval=5,    group=grp_signal, tooltip="How many of 5 timeframes must agree for a STRONG BUY/SELL signal")
 i_min_regular = input.int(4,    "TFs for BUY/SELL signal", minval=2,   maxval=5,    group=grp_signal, tooltip="How many of 5 timeframes for a regular BUY/SELL signal")
-i_also_regular = input.bool(false, "Also signal on BUY/SELL (not just STRONG)", group=grp_signal)
-i_cooldown    = input.int(60,   "Signal Cooldown (bars)",  minval=1,   maxval=500,  group=grp_signal, tooltip="Bars to wait after a signal before a new one can fire. 60 bars = 1 hour on 1M chart.")
+i_also_regular = input.bool(true, "Also signal on BUY/SELL (not just STRONG)", group=grp_signal)
+i_cooldown    = input.int(30,   "Signal Cooldown (bars)",  minval=1,   maxval=500,  group=grp_signal, tooltip="Bars to wait after a signal before a new one can fire. 30 bars = 30 minutes on 1M chart.")
 i_vol_filter  = input.bool(false, "Enable Volume Filter",                              group=grp_signal, tooltip="Only signal when current bar volume is above its moving average.")
 i_vol_ma_len  = input.int(20,   "Volume MA Length",        minval=5,   maxval=100,   group=grp_signal)
-i_min_move    = input.bool(true,  "Enable Minimum Move Filter",                        group=grp_signal, tooltip="Require a minimum price movement (0.3x ATR) before signaling to avoid flat/choppy markets.")
-i_min_ema_dist = input.float(2.0, "Min EMA Distance (pips)", minval=0.0, maxval=20.0, step=0.5, group=grp_signal, tooltip="Price must be at least this many pips away from EMA9 to confirm entry direction.")
+i_min_move    = input.bool(true,  "Enable Minimum Move Filter",                        group=grp_signal, tooltip="Require a minimum price movement (0.3x ATR) over the last 3 bars before signaling to avoid flat/choppy markets.")
+i_min_ema_dist = input.float(0.5, "Min EMA Distance (pips)", minval=0.0, maxval=20.0, step=0.5, group=grp_signal, tooltip="Price must be at least this many pips away from EMA9 to confirm entry direction.")
+i_fresh_lookback = input.int(5, "Signal Freshness Lookback", minval=1, maxval=20, group=grp_signal, tooltip="How many bars back to check that the alignment is 'new'. Higher = more signals filtered. Default: 5")
 
 i_sl_method   = input.string("ATR", "SL Method",           options=["ATR", "Fixed Pips"], group=grp_sl_tp)
 i_atr_period  = input.int(14,   "ATR Period",              minval=1,   maxval=50,   group=grp_sl_tp)
@@ -150,13 +151,29 @@ regular_sell = bear_count >= i_min_regular and bear_count < i_min_strong
 weak_sell    = bear_count == 3 and bear_count < i_min_regular
 
 // ─────────────────────────────────────────────
-//  TRANSITION DETECTION (crossover of alignment score)
-//  Signals only fire when the score freshly crosses the threshold — not on every bar
+//  FRESH ALIGNMENT DETECTION
+//  Fires when alignment threshold is newly met — not on every bar it IS met,
+//  and not requiring an exact single-bar jump (which is extremely rare on 1M).
+//  "Fresh" = threshold met NOW, but NOT met in any of the last i_fresh_lookback bars.
 // ─────────────────────────────────────────────
-strong_buy_cross   = ta.crossover( bull_count, i_min_strong - 0.5)
-strong_sell_cross  = ta.crossunder(bull_count, 5 - i_min_strong + 0.5)
-regular_buy_cross  = ta.crossover( bull_count, i_min_regular - 0.5)
-regular_sell_cross = ta.crossunder(bull_count, 5 - i_min_regular + 0.5)
+was_strong_buy  = false
+was_regular_buy = false
+was_strong_sell = false
+was_regular_sell = false
+for i = 1 to i_fresh_lookback
+    if bull_count[i] >= i_min_strong
+        was_strong_buy  := true
+    if bull_count[i] >= i_min_regular
+        was_regular_buy := true
+    if bear_count[i] >= i_min_strong
+        was_strong_sell  := true
+    if bear_count[i] >= i_min_regular
+        was_regular_sell := true
+
+strong_buy_fresh  = bull_count >= i_min_strong   and not was_strong_buy
+regular_buy_fresh = bull_count >= i_min_regular  and not was_regular_buy
+strong_sell_fresh  = bear_count >= i_min_strong  and not was_strong_sell
+regular_sell_fresh = bear_count >= i_min_regular and not was_regular_sell
 
 // ─────────────────────────────────────────────
 //  SESSION DETECTION (UTC / GMT+0)
@@ -171,8 +188,8 @@ session_ok     = not i_use_sessions or in_any_session
 // ─────────────────────────────────────────────
 //  SIGNAL TRIGGER WITH COOLDOWN
 // ─────────────────────────────────────────────
-// ADX gate: only trade when 5M and 15M confirm a trending market
-adx_ok = as_5m and as_15m
+// ADX gate: only trade when at least one of 5M or 15M confirms a trending market
+adx_ok = as_5m or as_15m
 
 // 1M entry confirmation: price must be on the right side of the fast EMAs
 // and at least i_min_ema_dist pips away (avoids whipsaws at the crossover point)
@@ -186,12 +203,14 @@ vol_ma  = ta.sma(volume, i_vol_ma_len)
 vol_ok  = not i_vol_filter or volume > vol_ma
 
 // Minimum price movement filter: avoid signals in flat/choppy markets
+// Use 3-bar range instead of single bar close-to-close for more reliable detection
 atr_1m      = ta.atr(i_atr_period)
-min_move_ok = not i_min_move or math.abs(close - close[1]) > 0.3 * atr_1m
+recent_range = ta.highest(high, 3) - ta.lowest(low, 3)
+min_move_ok = not i_min_move or recent_range > 0.3 * atr_1m
 
-// Signals fire on TRANSITIONS (alignment score crosses threshold), not static conditions
-raw_buy  = (strong_buy_cross  or (i_also_regular and regular_buy_cross))  and session_ok and adx_ok and price_confirm_buy  and vol_ok and min_move_ok
-raw_sell = (strong_sell_cross or (i_also_regular and regular_sell_cross)) and session_ok and adx_ok and price_confirm_sell and vol_ok and min_move_ok
+// Signals fire on FRESH ALIGNMENT (threshold newly met), not static conditions
+raw_buy  = (strong_buy_fresh  or (i_also_regular and regular_buy_fresh))  and session_ok and adx_ok and price_confirm_buy  and vol_ok and min_move_ok
+raw_sell = (strong_sell_fresh or (i_also_regular and regular_sell_fresh)) and session_ok and adx_ok and price_confirm_sell and vol_ok and min_move_ok
 
 var int bars_since_sig = 0
 bars_since_sig := bars_since_sig + 1

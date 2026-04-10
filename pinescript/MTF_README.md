@@ -185,7 +185,7 @@ The dashboard table appears in the top-right corner (configurable) of your chart
 | 🔴 **SELL** | 4/5 TFs bearish | Good short setup |
 | 🔴🔴 **STRONG SELL** | All 5 TFs bearish | Best short setup — trade it |
 
-By default, **only STRONG BUY and STRONG SELL** trigger a chart signal. You can enable regular BUY/SELL via the "Also signal on BUY/SELL" toggle.
+By default, **STRONG BUY/SELL (5/5 TFs) and regular BUY/SELL (4/5 TFs)** trigger a chart signal. You can disable regular signals via the "Also signal on BUY/SELL" toggle.
 
 ### Entry, TP & SL Levels
 
@@ -259,12 +259,13 @@ When a trade closes, a label appears at the exit price:
 |---|---|---|
 | TFs for STRONG signal | 5 | How many of 5 timeframes must agree for STRONG BUY/SELL |
 | TFs for BUY/SELL signal | 4 | How many for regular BUY/SELL |
-| Also signal on BUY/SELL | OFF | Enable this to also get signals on 4/5 agreement (not just 5/5) |
-| Signal Cooldown (bars) | 60 | Minimum bars between signals — 60 bars = 1 hour on 1M chart |
+| Also signal on BUY/SELL | ON | Enable this to also get signals on 4/5 agreement (not just 5/5) |
+| Signal Cooldown (bars) | 30 | Minimum bars between signals — 30 bars = 30 minutes on 1M chart |
 | Enable Volume Filter | OFF | Only signal when volume exceeds its moving average (confirms real participation) |
 | Volume MA Length | 20 | Period for volume moving average used in the volume filter |
-| Enable Minimum Move Filter | ON | Requires a minimum price move (0.3× ATR) before signaling — filters flat/choppy conditions |
-| Min EMA Distance (pips) | 2.0 | Price must be at least this far from EMA9 to confirm direction (avoids whipsaw entries) |
+| Enable Minimum Move Filter | ON | Requires a minimum price move (0.3× ATR) over the last 3 bars before signaling — filters flat/choppy conditions |
+| Min EMA Distance (pips) | 0.5 | Price must be at least this far from EMA9 to confirm direction (avoids whipsaw entries) |
+| Signal Freshness Lookback | 5 | How many bars back to check that the alignment is "new" — prevents repeat signals during sustained alignment |
 
 ### Stop Loss & Take Profit
 
