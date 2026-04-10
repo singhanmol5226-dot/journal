@@ -1,0 +1,462 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// © DXY-USDJPY Correlation Indicator v1.0
+// Designed for USDJPY 1-Minute Scalping | Max SL: 30 pips | TP: 80-100 pips
+
+//@version=5
+indicator("DXY-USDJPY Correlation Signals", shorttitle="DXY-JPY Corr", overlay=true, max_lines_count=20, max_labels_count=50, max_boxes_count=5)
+
+// ─────────────────────────────────────────────
+//  INPUT SETTINGS
+// ─────────────────────────────────────────────
+grp_corr    = "Correlation Settings"
+grp_signal  = "Signal Settings"
+grp_sl_tp   = "Stop Loss & Take Profit"
+grp_rsi     = "RSI Settings"
+grp_macd    = "MACD Settings"
+grp_display = "Display Settings"
+grp_dxy     = "DXY Symbol"
+
+i_dxy_sym       = input.symbol("TVC:DXY",   "DXY Symbol",                       group=grp_dxy)
+
+i_corr_short    = input.int(20,  "Short Correlation Period",  minval=5,  maxval=200, group=grp_corr)
+i_corr_med      = input.int(50,  "Medium Correlation Period", minval=10, maxval=500, group=grp_corr)
+i_corr_long     = input.int(100, "Long Correlation Period",   minval=20, maxval=1000, group=grp_corr)
+i_corr_thresh   = input.float(0.70, "Min Correlation Threshold (0–1)", minval=0.1, maxval=1.0, step=0.05, group=grp_corr)
+
+i_cooldown      = input.int(10, "Signal Cooldown (bars)",    minval=1,  maxval=100,  group=grp_signal)
+i_div_pct       = input.float(0.05, "DXY Move % to trigger divergence", minval=0.01, maxval=1.0, step=0.01, group=grp_signal)
+
+i_sl_method     = input.string("ATR", "SL Method", options=["ATR", "Fixed Pips"], group=grp_sl_tp)
+i_atr_period    = input.int(14,  "ATR Period",              minval=1,  maxval=50,   group=grp_sl_tp)
+i_atr_mult      = input.float(1.5, "ATR Multiplier for SL", minval=0.5, maxval=5.0, step=0.1, group=grp_sl_tp)
+i_max_sl_pips   = input.float(30.0, "Max SL (pips)",        minval=5.0, maxval=100.0, step=1.0, group=grp_sl_tp)
+i_fixed_sl_pips = input.float(25.0, "Fixed SL (pips)",      minval=5.0, maxval=100.0, step=1.0, group=grp_sl_tp)
+i_tp1_rr        = input.float(2.0,  "TP1 R:R Ratio",        minval=1.0, maxval=10.0, step=0.5, group=grp_sl_tp)
+i_tp2_rr        = input.float(3.0,  "TP2 R:R Ratio",        minval=1.0, maxval=15.0, step=0.5, group=grp_sl_tp)
+i_tp3_rr        = input.float(4.0,  "TP3 R:R Ratio",        minval=1.0, maxval=20.0, step=0.5, group=grp_sl_tp)
+
+i_rsi_period    = input.int(14, "RSI Period",               minval=2,  maxval=50,   group=grp_rsi)
+i_rsi_ob        = input.int(60, "RSI Overbought Level",     minval=50, maxval=90,   group=grp_rsi)
+i_rsi_os        = input.int(40, "RSI Oversold Level",       minval=10, maxval=50,   group=grp_rsi)
+
+i_macd_fast     = input.int(12, "MACD Fast Length",         minval=2,  maxval=50,   group=grp_macd)
+i_macd_slow     = input.int(26, "MACD Slow Length",         minval=5,  maxval=100,  group=grp_macd)
+i_macd_signal   = input.int(9,  "MACD Signal Length",       minval=2,  maxval=50,   group=grp_macd)
+
+i_show_tp_lines = input.bool(true,  "Show TP Lines",        group=grp_display)
+i_show_sl_line  = input.bool(true,  "Show SL Line",         group=grp_display)
+i_show_labels   = input.bool(true,  "Show Signal Labels",   group=grp_display)
+i_show_panel    = input.bool(true,  "Show Correlation Panel", group=grp_display)
+i_show_bg       = input.bool(true,  "Background Color During Trade", group=grp_display)
+
+// ─────────────────────────────────────────────
+//  PIP VALUE (USDJPY: 1 pip = 0.01)
+// ─────────────────────────────────────────────
+pip = syminfo.mintick * 10  // 0.01 for JPY pairs
+
+// ─────────────────────────────────────────────
+//  FETCH DXY DATA
+// ─────────────────────────────────────────────
+dxy_close = request.security(i_dxy_sym, timeframe.period, close)
+dxy_open  = request.security(i_dxy_sym, timeframe.period, open)
+dxy_high  = request.security(i_dxy_sym, timeframe.period, high)
+dxy_low   = request.security(i_dxy_sym, timeframe.period, low)
+
+// ─────────────────────────────────────────────
+//  PEARSON CORRELATION FUNCTION
+// ─────────────────────────────────────────────
+pearson_corr(src1, src2, length) =>
+    x = src1
+    y = src2
+    mx = ta.sma(x, length)
+    my = ta.sma(y, length)
+    dx = x - mx
+    dy = y - my
+    num = ta.sma(dx * dy, length)
+    den = math.sqrt(ta.sma(dx * dx, length) * ta.sma(dy * dy, length))
+    den == 0 ? 0 : num / den
+
+corr_short = pearson_corr(close, dxy_close, i_corr_short)
+corr_med   = pearson_corr(close, dxy_close, i_corr_med)
+corr_long  = pearson_corr(close, dxy_close, i_corr_long)
+
+// Use medium-term correlation as primary signal filter
+corr_primary = corr_med
+corr_strong  = math.abs(corr_primary) >= i_corr_thresh
+
+// ─────────────────────────────────────────────
+//  ATR & VOLATILITY
+// ─────────────────────────────────────────────
+atr = ta.atr(i_atr_period)
+
+// Volatility filter: skip signals when ATR is in lowest 20% of recent range
+atr_low  = ta.lowest(atr, 50)
+atr_high = ta.highest(atr, 50)
+atr_pct  = atr_high != atr_low ? (atr - atr_low) / (atr_high - atr_low) : 0.5
+low_vol  = atr_pct < 0.20   // filter out ranging / low-vol markets
+
+// ─────────────────────────────────────────────
+//  RSI
+// ─────────────────────────────────────────────
+rsi = ta.rsi(close, i_rsi_period)
+rsi_bull = rsi > 50 and rsi < i_rsi_ob   // not yet overbought, bullish zone
+rsi_bear = rsi < 50 and rsi > i_rsi_os   // not yet oversold, bearish zone
+rsi_cross_up   = ta.crossover(rsi, 50)
+rsi_cross_down = ta.crossunder(rsi, 50)
+
+// ─────────────────────────────────────────────
+//  MACD
+// ─────────────────────────────────────────────
+[macd_line, signal_line, macd_hist] = ta.macd(close, i_macd_fast, i_macd_slow, i_macd_signal)
+macd_bull = macd_line > signal_line and macd_hist > 0
+macd_bear = macd_line < signal_line and macd_hist < 0
+macd_cross_up   = ta.crossover(macd_line, signal_line)
+macd_cross_down = ta.crossunder(macd_line, signal_line)
+
+// ─────────────────────────────────────────────
+//  DIVERGENCE DETECTION
+//  DXY moves UP  but USDJPY lags → BUY
+//  DXY moves DOWN but USDJPY lags → SELL
+// ─────────────────────────────────────────────
+lookback = 3  // bars to measure move over
+
+dxy_change  = (dxy_close - dxy_close[lookback]) / dxy_close[lookback] * 100
+jpy_change  = (close - close[lookback]) / close[lookback] * 100
+
+// DXY bullish divergence: DXY rose meaningfully, USDJPY has not yet
+div_bull = dxy_change >= i_div_pct and jpy_change < dxy_change * 0.5
+
+// DXY bearish divergence: DXY dropped meaningfully, USDJPY has not yet
+div_bear = dxy_change <= -i_div_pct and jpy_change > dxy_change * 0.5
+
+// ─────────────────────────────────────────────
+//  SIGNAL CONDITIONS
+// ─────────────────────────────────────────────
+raw_buy  = div_bull and corr_strong and (rsi_bull or rsi_cross_up)  and (macd_bull or macd_cross_up)  and not low_vol
+raw_sell = div_bear and corr_strong and (rsi_bear or rsi_cross_down) and (macd_bear or macd_cross_down) and not low_vol
+
+// ─────────────────────────────────────────────
+//  COOLDOWN: prevent back-to-back signals
+// ─────────────────────────────────────────────
+var int bars_since_signal = i_cooldown + 1
+
+bars_since_signal := bars_since_signal >= i_cooldown + 1 ? bars_since_signal : bars_since_signal + 1
+
+buy_signal  = raw_buy  and bars_since_signal > i_cooldown
+sell_signal = raw_sell and bars_since_signal > i_cooldown
+
+if buy_signal or sell_signal
+    bars_since_signal := 0
+
+// ─────────────────────────────────────────────
+//  SL / TP CALCULATION
+// ─────────────────────────────────────────────
+calc_sl_distance() =>
+    atr_sl    = atr * i_atr_mult
+    max_sl    = i_max_sl_pips * pip
+    fixed_sl  = i_fixed_sl_pips * pip
+    sl_dist   = i_sl_method == "ATR" ? math.min(atr_sl, max_sl) : fixed_sl
+    sl_dist
+
+sl_dist = calc_sl_distance()
+tp1_dist = sl_dist * i_tp1_rr
+tp2_dist = sl_dist * i_tp2_rr
+tp3_dist = sl_dist * i_tp3_rr
+
+// ─────────────────────────────────────────────
+//  TRADE STATE (persistent vars)
+// ─────────────────────────────────────────────
+var float entry_price  = na
+var float sl_price     = na
+var float tp1_price    = na
+var float tp2_price    = na
+var float tp3_price    = na
+var int   trade_dir    = 0   // 1=long, -1=short, 0=flat
+var bool  tp1_hit      = false
+var bool  tp2_hit      = false
+var bool  tp3_hit      = false
+
+// lines & labels (kept as var for cleanup)
+var line  line_entry   = na
+var line  line_sl      = na
+var line  line_tp1     = na
+var line  line_tp2     = na
+var line  line_tp3     = na
+
+// ─────────────────────────────────────────────
+//  STATISTICS
+// ─────────────────────────────────────────────
+var int   total_signals = 0
+var int   total_wins    = 0
+var int   total_losses  = 0
+var float total_pips    = 0.0
+
+// ─────────────────────────────────────────────
+//  HELPER: delete existing trade lines
+// ─────────────────────────────────────────────
+delete_lines() =>
+    if not na(line_entry)
+        line.delete(line_entry)
+    if not na(line_sl)
+        line.delete(line_sl)
+    if not na(line_tp1)
+        line.delete(line_tp1)
+    if not na(line_tp2)
+        line.delete(line_tp2)
+    if not na(line_tp3)
+        line.delete(line_tp3)
+
+// ─────────────────────────────────────────────
+//  HELPER: pips from price distance
+// ─────────────────────────────────────────────
+to_pips(dist) =>
+    math.round(dist / pip)
+
+// ─────────────────────────────────────────────
+//  TRADE OPEN LOGIC
+// ─────────────────────────────────────────────
+if buy_signal and trade_dir == 0
+    delete_lines()
+    entry_price := close
+    sl_price    := close - sl_dist
+    tp1_price   := close + tp1_dist
+    tp2_price   := close + tp2_dist
+    tp3_price   := close + tp3_dist
+    trade_dir   := 1
+    tp1_hit     := false
+    tp2_hit     := false
+    tp3_hit     := false
+    total_signals := total_signals + 1
+
+    // Draw lines
+    if i_show_sl_line
+        line_sl    := line.new(bar_index, sl_price,  bar_index + 1, sl_price,  color=color.red,         style=line.style_dashed, width=2)
+    line_entry     := line.new(bar_index, entry_price, bar_index + 1, entry_price, color=color.white,    style=line.style_solid,  width=2)
+    if i_show_tp_lines
+        line_tp1   := line.new(bar_index, tp1_price, bar_index + 1, tp1_price, color=color.lime,         style=line.style_dotted, width=1)
+        line_tp2   := line.new(bar_index, tp2_price, bar_index + 1, tp2_price, color=color.green,        style=line.style_dotted, width=2)
+        line_tp3   := line.new(bar_index, tp3_price, bar_index + 1, tp3_price, color=color.teal,         style=line.style_dotted, width=3)
+
+    if i_show_labels
+        label.new(bar_index, low - atr,
+             "🟢 BUY\nEntry: " + str.tostring(entry_price, "#.###") +
+             "\nSL: "  + str.tostring(sl_price,    "#.###") + " (-" + str.tostring(to_pips(sl_dist))  + " pips)" +
+             "\nTP1: " + str.tostring(tp1_price,   "#.###") + " (+"  + str.tostring(to_pips(tp1_dist)) + " pips)" +
+             "\nTP2: " + str.tostring(tp2_price,   "#.###") + " (+"  + str.tostring(to_pips(tp2_dist)) + " pips)" +
+             "\nTP3: " + str.tostring(tp3_price,   "#.###") + " (+"  + str.tostring(to_pips(tp3_dist)) + " pips)",
+             color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+if sell_signal and trade_dir == 0
+    delete_lines()
+    entry_price := close
+    sl_price    := close + sl_dist
+    tp1_price   := close - tp1_dist
+    tp2_price   := close - tp2_dist
+    tp3_price   := close - tp3_dist
+    trade_dir   := -1
+    tp1_hit     := false
+    tp2_hit     := false
+    tp3_hit     := false
+    total_signals := total_signals + 1
+
+    if i_show_sl_line
+        line_sl    := line.new(bar_index, sl_price,  bar_index + 1, sl_price,  color=color.red,         style=line.style_dashed, width=2)
+    line_entry     := line.new(bar_index, entry_price, bar_index + 1, entry_price, color=color.white,    style=line.style_solid,  width=2)
+    if i_show_tp_lines
+        line_tp1   := line.new(bar_index, tp1_price, bar_index + 1, tp1_price, color=color.lime,         style=line.style_dotted, width=1)
+        line_tp2   := line.new(bar_index, tp2_price, bar_index + 1, tp2_price, color=color.green,        style=line.style_dotted, width=2)
+        line_tp3   := line.new(bar_index, tp3_price, bar_index + 1, tp3_price, color=color.teal,         style=line.style_dotted, width=3)
+
+    if i_show_labels
+        label.new(bar_index, high + atr,
+             "🔴 SELL\nEntry: " + str.tostring(entry_price, "#.###") +
+             "\nSL: "  + str.tostring(sl_price,    "#.###") + " (+"  + str.tostring(to_pips(sl_dist))  + " pips)" +
+             "\nTP1: " + str.tostring(tp1_price,   "#.###") + " (-" + str.tostring(to_pips(tp1_dist)) + " pips)" +
+             "\nTP2: " + str.tostring(tp2_price,   "#.###") + " (-" + str.tostring(to_pips(tp2_dist)) + " pips)" +
+             "\nTP3: " + str.tostring(tp3_price,   "#.###") + " (-" + str.tostring(to_pips(tp3_dist)) + " pips)",
+             color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+// ─────────────────────────────────────────────
+//  EXTEND LINES WHILE TRADE IS ACTIVE
+// ─────────────────────────────────────────────
+if trade_dir != 0 and not na(line_entry)
+    line.set_x2(line_entry, bar_index + 1)
+    if not na(line_sl)
+        line.set_x2(line_sl, bar_index + 1)
+    if not na(line_tp1)
+        line.set_x2(line_tp1, bar_index + 1)
+    if not na(line_tp2)
+        line.set_x2(line_tp2, bar_index + 1)
+    if not na(line_tp3)
+        line.set_x2(line_tp3, bar_index + 1)
+
+// ─────────────────────────────────────────────
+//  TRADE EXIT LOGIC
+// ─────────────────────────────────────────────
+if trade_dir == 1  // LONG trade monitoring
+    if not tp1_hit and high >= tp1_price
+        tp1_hit := true
+        float pips_gained = to_pips(tp1_dist)
+        label.new(bar_index, tp1_price, "✅ TP1 HIT\n(+" + str.tostring(pips_gained) + " pips)",
+             color=color.new(color.green, 20), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+    if not tp2_hit and high >= tp2_price
+        tp2_hit := true
+        float pips_gained = to_pips(tp2_dist)
+        label.new(bar_index, tp2_price, "✅ TP2 HIT\n(+" + str.tostring(pips_gained) + " pips)",
+             color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+    if not tp3_hit and high >= tp3_price
+        tp3_hit := true
+        float pips_gained = to_pips(tp3_dist)
+        label.new(bar_index, tp3_price, "✅ TP3 HIT\n(+" + str.tostring(pips_gained) + " pips)",
+             color=color.teal, textcolor=color.white, style=label.style_label_down, size=size.small)
+        total_wins  := total_wins + 1
+        total_pips  := total_pips + pips_gained
+        delete_lines()
+        trade_dir   := 0
+
+    if trade_dir == 1 and low <= sl_price
+        float pips_lost = to_pips(sl_dist)
+        label.new(bar_index, sl_price, "❌ SL HIT\n(-" + str.tostring(pips_lost) + " pips)",
+             color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_up, size=size.small)
+        total_losses := total_losses + 1
+        total_pips   := total_pips - pips_lost
+        if tp1_hit
+            total_wins := total_wins + 1
+        delete_lines()
+        trade_dir := 0
+
+if trade_dir == -1  // SHORT trade monitoring
+    if not tp1_hit and low <= tp1_price
+        tp1_hit := true
+        float pips_gained = to_pips(tp1_dist)
+        label.new(bar_index, tp1_price, "✅ TP1 HIT\n(+" + str.tostring(pips_gained) + " pips)",
+             color=color.new(color.green, 20), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+    if not tp2_hit and low <= tp2_price
+        tp2_hit := true
+        float pips_gained = to_pips(tp2_dist)
+        label.new(bar_index, tp2_price, "✅ TP2 HIT\n(+" + str.tostring(pips_gained) + " pips)",
+             color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+    if not tp3_hit and low <= tp3_price
+        tp3_hit := true
+        float pips_gained = to_pips(tp3_dist)
+        label.new(bar_index, tp3_price, "✅ TP3 HIT\n(+" + str.tostring(pips_gained) + " pips)",
+             color=color.teal, textcolor=color.white, style=label.style_label_up, size=size.small)
+        total_wins  := total_wins + 1
+        total_pips  := total_pips + pips_gained
+        delete_lines()
+        trade_dir   := 0
+
+    if trade_dir == -1 and high >= sl_price
+        float pips_lost = to_pips(sl_dist)
+        label.new(bar_index, sl_price, "❌ SL HIT\n(-" + str.tostring(pips_lost) + " pips)",
+             color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_down, size=size.small)
+        total_losses := total_losses + 1
+        total_pips   := total_pips - pips_lost
+        if tp1_hit
+            total_wins := total_wins + 1
+        delete_lines()
+        trade_dir := 0
+
+// ─────────────────────────────────────────────
+//  BACKGROUND COLOR DURING ACTIVE TRADE
+// ─────────────────────────────────────────────
+bg_col = trade_dir == 1  ? color.new(color.green, 92) :
+         trade_dir == -1 ? color.new(color.red,   92) : na
+bgcolor(i_show_bg ? bg_col : na)
+
+// ─────────────────────────────────────────────
+//  SIGNAL PLOTS (triangles)
+// ─────────────────────────────────────────────
+plotshape(buy_signal,  title="BUY Signal",  location=location.belowbar, style=shape.triangleup,   size=size.normal, color=color.green, text="BUY")
+plotshape(sell_signal, title="SELL Signal", location=location.abovebar, style=shape.triangledown, size=size.normal, color=color.red,   text="SELL")
+
+// ─────────────────────────────────────────────
+//  CORRELATION PANEL (top-right table)
+// ─────────────────────────────────────────────
+corr_trend     = corr_med > corr_med[1] ? "↑ Rising" : corr_med < corr_med[1] ? "↓ Falling" : "→ Flat"
+corr_abs       = math.abs(corr_primary)
+sig_strength   = corr_abs >= 0.85 ? "Strong 🔥" : corr_abs >= i_corr_thresh ? "Medium ✅" : "Weak ❌"
+trade_status   = trade_dir == 1 ? "LONG 🟢" : trade_dir == -1 ? "SHORT 🔴" : "No Trade ⬜"
+
+win_rate_str   = total_signals > 0 ? str.tostring(math.round(total_wins / total_signals * 100)) + "%" : "N/A"
+pips_str       = (total_pips >= 0 ? "+" : "") + str.tostring(math.round(total_pips)) + " pips"
+
+var table corr_table = table.new(position.top_right, 2, 9, border_width=1,
+     frame_color=color.gray, border_color=color.gray,
+     bgcolor=color.new(color.black, 20))
+
+if i_show_panel and barstate.islast
+    // Header
+    table.cell(corr_table, 0, 0, "DXY-JPY CORRELATION",  bgcolor=color.new(color.navy, 20),  text_color=color.white, text_size=size.small, colspan=2)
+    // Correlation values
+    table.cell(corr_table, 0, 1, "Short Corr (" + str.tostring(i_corr_short) + ")", bgcolor=color.new(color.gray, 70), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 1, str.tostring(corr_short, "#.##"),  bgcolor=color.new(color.gray, 70), text_color=corr_short >= i_corr_thresh ? color.lime : color.orange, text_size=size.tiny)
+    table.cell(corr_table, 0, 2, "Med Corr (" + str.tostring(i_corr_med) + ")",   bgcolor=color.new(color.gray, 60), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 2, str.tostring(corr_med, "#.##"),    bgcolor=color.new(color.gray, 60), text_color=corr_med >= i_corr_thresh ? color.lime : color.orange, text_size=size.tiny)
+    table.cell(corr_table, 0, 3, "Long Corr (" + str.tostring(i_corr_long) + ")", bgcolor=color.new(color.gray, 70), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 3, str.tostring(corr_long, "#.##"),   bgcolor=color.new(color.gray, 70), text_color=corr_long >= i_corr_thresh ? color.lime : color.orange, text_size=size.tiny)
+    // Trend & strength
+    table.cell(corr_table, 0, 4, "Corr Trend",  bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 4, corr_trend,     bgcolor=color.new(color.gray, 80), text_color=color.silver, text_size=size.tiny)
+    table.cell(corr_table, 0, 5, "Strength",     bgcolor=color.new(color.gray, 70), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 5, sig_strength,   bgcolor=color.new(color.gray, 70), text_color=corr_abs >= i_corr_thresh ? color.lime : color.orange, text_size=size.tiny)
+    // Trade status
+    table.cell(corr_table, 0, 6, "Trade",        bgcolor=color.new(color.gray, 60), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 6, trade_status,   bgcolor=color.new(color.gray, 60), text_color=color.white, text_size=size.tiny)
+    // Statistics
+    table.cell(corr_table, 0, 7, "Signals / WR", bgcolor=color.new(color.gray, 70), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 7, str.tostring(total_signals) + " / " + win_rate_str, bgcolor=color.new(color.gray, 70), text_color=color.silver, text_size=size.tiny)
+    table.cell(corr_table, 0, 8, "Total Pips",   bgcolor=color.new(color.gray, 60), text_color=color.white, text_size=size.tiny)
+    table.cell(corr_table, 1, 8, pips_str,        bgcolor=color.new(color.gray, 60), text_color=total_pips >= 0 ? color.lime : color.red, text_size=size.tiny)
+
+// ─────────────────────────────────────────────
+//  PLOT CORRELATION (separate pane via plot)
+// ─────────────────────────────────────────────
+// Note: These plot in the main overlay pane as reference lines.
+// For a dedicated pane, users can add a separate indicator.
+plot(corr_short, title="Corr Short", display=display.none)
+plot(corr_med,   title="Corr Med",   display=display.none)
+plot(corr_long,  title="Corr Long",  display=display.none)
+
+// ─────────────────────────────────────────────
+//  ALERT CONDITIONS
+// ─────────────────────────────────────────────
+buy_msg  = "🟢 BUY SIGNAL | Entry: " + str.tostring(close, "#.###") +
+           " | SL: " + str.tostring(close - sl_dist, "#.###") +
+           " (-" + str.tostring(to_pips(sl_dist)) + " pips)" +
+           " | TP1: " + str.tostring(close + tp1_dist, "#.###") +
+           " | TP2: " + str.tostring(close + tp2_dist, "#.###") +
+           " | TP3: " + str.tostring(close + tp3_dist, "#.###") +
+           " | Corr: " + str.tostring(corr_med, "#.##")
+
+sell_msg = "🔴 SELL SIGNAL | Entry: " + str.tostring(close, "#.###") +
+           " | SL: " + str.tostring(close + sl_dist, "#.###") +
+           " (+" + str.tostring(to_pips(sl_dist)) + " pips)" +
+           " | TP1: " + str.tostring(close - tp1_dist, "#.###") +
+           " | TP2: " + str.tostring(close - tp2_dist, "#.###") +
+           " | TP3: " + str.tostring(close - tp3_dist, "#.###") +
+           " | Corr: " + str.tostring(corr_med, "#.##")
+
+alertcondition(buy_signal,  title="BUY Signal",  message=buy_msg)
+alertcondition(sell_signal, title="SELL Signal", message=sell_msg)
+
+// TP / SL hit alerts
+// Detect the exact bar where each state variable transitions (false → true) using [1].
+// This avoids firing on subsequent bars where the state variable remains true.
+tp1_hit_evt = tp1_hit and not tp1_hit[1]
+tp2_hit_evt = tp2_hit and not tp2_hit[1]
+tp3_hit_evt = tp3_hit and not tp3_hit[1]
+
+// SL hit: trade_dir transitions from ±1 → 0 on this bar, and TP3 was NOT the exit trigger.
+// Using tp3_hit_evt (false→true transition) ensures we only exclude bars where TP3 was
+// hit on this exact bar, not stale state from a prior trade.
+sl_hit_evt  = (trade_dir[1] == 1 or trade_dir[1] == -1) and trade_dir == 0 and not tp3_hit_evt
+
+alertcondition(tp1_hit_evt, title="TP1 Hit", message="✅ TP1 HIT | DXY-JPY Correlation Indicator")
+alertcondition(tp2_hit_evt, title="TP2 Hit", message="✅ TP2 HIT | DXY-JPY Correlation Indicator")
+alertcondition(tp3_hit_evt, title="TP3 Hit", message="✅ TP3 HIT | DXY-JPY Correlation Indicator")
+alertcondition(sl_hit_evt,  title="SL Hit",  message="❌ SL HIT  | DXY-JPY Correlation Indicator")
