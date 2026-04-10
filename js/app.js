@@ -7,7 +7,8 @@ let allTrades = [];
 let editingTradeId = null;
 let currentSection = 'dashboard';
 let filterState = { dateFrom: '', dateTo: '', instrument: '', strategy: '', outcome: '', search: '' };
-let settings = { currency: '₹', instruments: 'NIFTY,BANKNIFTY,SENSEX,AAPL,BTC,ETH,RELIANCE,TCS' };
+let settings = { currency: '₹', instruments: 'NIFTY,BANKNIFTY,SENSEX,AAPL,BTC,ETH,RELIANCE,TCS', dailyGoal: '', maxLoss: '', openaiKey: '' };
+let currentReportsTab = 'monthly';
 
 // ─── DOM Ready ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -28,6 +29,9 @@ async function loadSettings() {
     const s = await getAllSettings();
     if (s.currency) settings.currency = s.currency;
     if (s.instruments) settings.instruments = s.instruments;
+    if (s.dailyGoal !== undefined) settings.dailyGoal = s.dailyGoal;
+    if (s.maxLoss !== undefined) settings.maxLoss = s.maxLoss;
+    if (s.openaiKey !== undefined) settings.openaiKey = s.openaiKey;
   } catch (e) { /* use defaults */ }
   applySettingsToUI();
 }
@@ -35,8 +39,14 @@ async function loadSettings() {
 function applySettingsToUI() {
   const currInput = document.getElementById('settingCurrency');
   const instrInput = document.getElementById('settingInstruments');
+  const dailyGoalInput = document.getElementById('settingDailyGoal');
+  const maxLossInput = document.getElementById('settingMaxLoss');
+  const openaiKeyInput = document.getElementById('settingOpenAIKey');
   if (currInput) currInput.value = settings.currency;
   if (instrInput) instrInput.value = settings.instruments;
+  if (dailyGoalInput) dailyGoalInput.value = settings.dailyGoal || '';
+  if (maxLossInput) maxLossInput.value = settings.maxLoss || '';
+  if (openaiKeyInput) openaiKeyInput.value = settings.openaiKey || '';
   populateInstrumentDropdown();
 }
 
@@ -104,6 +114,9 @@ function showSection(name) {
   if (name === 'dashboard') renderDashboard();
   if (name === 'log') renderTradeLog();
   if (name === 'analytics') renderAnalytics();
+  if (name === 'calendar') renderCalendar();
+  if (name === 'reports') renderReports();
+  if (name === 'ai') renderAISection();
   if (name === 'add') {
     if (!editingTradeId) resetTradeForm();
   }
@@ -134,6 +147,12 @@ function renderDashboard() {
   renderEquityCurve(analytics, c);
   renderDailyPnL(analytics, c);
   renderWinLossPie(analytics);
+
+  // Daily goals
+  renderDailyGoals();
+
+  // Achievements
+  renderAchievements(analytics);
 
   // Recent trades table
   renderRecentTrades(analytics.enrichedTrades.slice(-10).reverse());
@@ -806,10 +825,19 @@ function setupSettingsForm() {
   if (saveBtn) saveBtn.addEventListener('click', async () => {
     const currency = document.getElementById('settingCurrency')?.value?.trim() || '₹';
     const instruments = document.getElementById('settingInstruments')?.value?.trim() || '';
+    const dailyGoal = document.getElementById('settingDailyGoal')?.value?.trim() || '';
+    const maxLoss = document.getElementById('settingMaxLoss')?.value?.trim() || '';
+    const openaiKey = document.getElementById('settingOpenAIKey')?.value?.trim() || '';
     settings.currency = currency;
     settings.instruments = instruments;
+    settings.dailyGoal = dailyGoal;
+    settings.maxLoss = maxLoss;
+    settings.openaiKey = openaiKey;
     await setSetting('currency', currency);
     await setSetting('instruments', instruments);
+    await setSetting('dailyGoal', dailyGoal);
+    await setSetting('maxLoss', maxLoss);
+    await setSetting('openaiKey', openaiKey);
     populateInstrumentDropdown();
     showToast('Settings saved!', 'success');
   });
@@ -851,6 +879,298 @@ window.viewTrade = viewTrade;
 window.editTrade = editTrade;
 window.handleDelete = handleDelete;
 window.removeScreenshot = removeScreenshot;
+
+// ─── Daily Goals ──────────────────────────────────────────────────────────────
+function renderDailyGoals() {
+  const section = document.getElementById('dailyGoalsSection');
+  const content = document.getElementById('dailyGoalsContent');
+  if (!section || !content) return;
+
+  const goalVal = parseFloat(settings.dailyGoal);
+  const maxLossVal = parseFloat(settings.maxLoss);
+  if (!goalVal && !maxLossVal) { section.style.display = 'none'; return; }
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const todayTrades = allTrades.filter(t => (t.entryDate || '') === todayStr);
+  const todayPnL = todayTrades.reduce((s, t) => s + calcPnL(t), 0);
+  const c = settings.currency;
+
+  let html = '<div class="daily-goals-grid">';
+
+  if (goalVal) {
+    const pct = Math.min(Math.max(todayPnL / goalVal * 100, 0), 100);
+    const goalClass = todayPnL >= goalVal ? 'positive' : '';
+    html += `
+      <div class="goal-item">
+        <div class="goal-label">🎯 Daily Goal: <strong>${c}${goalVal.toFixed(0)}</strong> &nbsp; Today: <span class="${goalClass}">${formatPnL(todayPnL, c)}</span></div>
+        <div class="goal-progress-bar"><div class="goal-progress-fill goal-fill-green" style="width:${pct.toFixed(1)}%"></div></div>
+        <div class="goal-pct">${pct.toFixed(0)}% achieved</div>
+      </div>`;
+  }
+
+  if (maxLossVal) {
+    const loss = Math.max(-todayPnL, 0);
+    const pct = Math.min(loss / maxLossVal * 100, 100);
+    const lossClass = todayPnL < -maxLossVal ? 'negative' : '';
+    html += `
+      <div class="goal-item">
+        <div class="goal-label">🛡️ Max Loss Limit: <strong>${c}${maxLossVal.toFixed(0)}</strong> &nbsp; Today's Loss: <span class="${lossClass}">${c}${loss.toFixed(2)}</span></div>
+        <div class="goal-progress-bar"><div class="goal-progress-fill goal-fill-red" style="width:${pct.toFixed(1)}%"></div></div>
+        <div class="goal-pct">${pct.toFixed(0)}% of limit used${pct >= 100 ? ' ⚠️ STOP TRADING' : ''}</div>
+      </div>`;
+  }
+
+  html += '</div>';
+  content.innerHTML = html;
+  section.style.display = '';
+}
+
+// ─── Achievements ─────────────────────────────────────────────────────────────
+function renderAchievements(analytics) {
+  const grid = document.getElementById('achievementsGrid');
+  if (!grid) return;
+
+  const enriched = allTrades.map(t => ({ ...t, pnl: calcPnL(t) }));
+  const total = enriched.length;
+  const profitFactor = analytics.profitFactor;
+
+  const sorted = [...enriched].sort((a, b) => ((a.entryDate||'') + (a.entryTime||'')) > ((b.entryDate||'') + (b.entryTime||'')) ? 1 : -1);
+  let maxStreak = 0, curStreak = 0;
+  for (const t of sorted) {
+    if (t.pnl > 0) { curStreak++; maxStreak = Math.max(maxStreak, curStreak); }
+    else curStreak = 0;
+  }
+
+  const byMonth = {};
+  for (const t of enriched) {
+    if (!t.entryDate) continue;
+    const m = t.entryDate.slice(0, 7);
+    byMonth[m] = (byMonth[m] || 0) + t.pnl;
+  }
+  const hasProfitableMonth = Object.values(byMonth).some(v => v > 0);
+
+  const achievements = [
+    { icon: '🌱', title: 'First Trade', desc: 'Logged your first trade', unlocked: total >= 1 },
+    { icon: '📋', title: '10 Trades', desc: 'Logged 10 trades', unlocked: total >= 10 },
+    { icon: '💯', title: '100 Trades', desc: 'Logged 100 trades', unlocked: total >= 100 },
+    { icon: '🔥', title: 'Win Streak 3', desc: '3 consecutive winning trades', unlocked: maxStreak >= 3 },
+    { icon: '⚡', title: 'Win Streak 5', desc: '5 consecutive winning trades', unlocked: maxStreak >= 5 },
+    { icon: '🏆', title: 'Best Month', desc: 'Had a profitable month', unlocked: hasProfitableMonth },
+    { icon: '📈', title: 'Profit Factor 2', desc: 'Achieved profit factor above 2', unlocked: isFinite(profitFactor) && profitFactor >= 2 },
+  ];
+
+  grid.innerHTML = achievements.map(a => `
+    <div class="achievement-card ${a.unlocked ? 'achievement-unlocked' : 'achievement-locked'}">
+      <div class="achievement-icon">${a.icon}</div>
+      <div class="achievement-info">
+        <div class="achievement-title">${a.title}</div>
+        <div class="achievement-desc">${a.desc}</div>
+      </div>
+      <div class="achievement-badge">${a.unlocked ? '✓' : '🔒'}</div>
+    </div>
+  `).join('');
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+function switchReportsTab(tab) {
+  currentReportsTab = tab;
+  document.querySelectorAll('.report-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+  });
+  renderReports();
+}
+
+function renderReports() {
+  const content = document.getElementById('reportsContent');
+  if (!content) return;
+
+  if (!allTrades.length) {
+    content.innerHTML = '<p class="empty-state" style="padding:40px 0;">No trades yet. Add some trades to see reports.</p>';
+    return;
+  }
+
+  const enriched = allTrades.map(t => ({ ...t, pnl: calcPnL(t) }));
+  const c = settings.currency;
+
+  if (currentReportsTab === 'monthly') content.innerHTML = renderMonthlyReport(enriched, c);
+  else if (currentReportsTab === 'weekly') content.innerHTML = renderWeeklyReport(enriched, c);
+  else if (currentReportsTab === 'yearly') content.innerHTML = renderYearlyReport(enriched, c);
+}
+
+function renderMonthlyReport(enriched, c) {
+  const byMonth = {};
+  for (const t of enriched) {
+    if (!t.entryDate) continue;
+    const m = t.entryDate.slice(0, 7);
+    if (!byMonth[m]) byMonth[m] = [];
+    byMonth[m].push(t);
+  }
+  const months = Object.keys(byMonth).sort().reverse();
+  if (!months.length) return '<p class="empty-state">No data.</p>';
+
+  const monthStats = months.map(m => {
+    const trades = byMonth[m];
+    const pnl = trades.reduce((s, t) => s + t.pnl, 0);
+    const wins = trades.filter(t => t.pnl > 0).length;
+    const wr = Math.round(wins / trades.length * 100);
+    const bestDay = Math.max(...trades.map(t => t.pnl));
+    const worstDay = Math.min(...trades.map(t => t.pnl));
+    return { m, trades: trades.length, wr, pnl, bestDay, worstDay };
+  });
+
+  const bestPnL = Math.max(...monthStats.map(s => s.pnl));
+  const worstPnL = Math.min(...monthStats.map(s => s.pnl));
+
+  const rows = monthStats.map(s => {
+    const isBest = s.pnl === bestPnL && bestPnL > 0;
+    const isWorst = s.pnl === worstPnL && worstPnL < 0;
+    const rowClass = isBest ? 'row-highlight-best' : isWorst ? 'row-highlight-worst' : '';
+    return `<tr class="${rowClass}">
+      <td>${s.m} ${isBest ? '🏆' : isWorst ? '⚠️' : ''}</td>
+      <td>${s.trades}</td>
+      <td>${s.wr}%</td>
+      <td class="${s.pnl >= 0 ? 'positive' : 'negative'}">${formatPnL(s.pnl, c)}</td>
+      <td class="positive">+${formatPnL(s.bestDay, c)}</td>
+      <td class="negative">${formatPnL(s.worstDay, c)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Month</th><th>Trades</th><th>Win Rate</th><th>P&L</th><th>Best Day</th><th>Worst Day</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderWeeklyReport(enriched, c) {
+  function getWeekLabel(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00');
+    const startOfYear = new Date(d.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+  }
+
+  function getWeekRange(weekLabel) {
+    const [year, wStr] = weekLabel.split('-W');
+    const weekNum = parseInt(wStr, 10);
+    const d = new Date(parseInt(year, 10), 0, 1 + (weekNum - 1) * 7);
+    const start = new Date(d);
+    start.setDate(d.getDate() - d.getDay());
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return `${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')} – ${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
+  }
+
+  const byWeek = {};
+  for (const t of enriched) {
+    if (!t.entryDate) continue;
+    const wk = getWeekLabel(t.entryDate);
+    if (!byWeek[wk]) byWeek[wk] = [];
+    byWeek[wk].push(t);
+  }
+  const weeks = Object.keys(byWeek).sort().reverse().slice(0, 8);
+  if (!weeks.length) return '<p class="empty-state">No data.</p>';
+
+  const rows = weeks.map(wk => {
+    const trades = byWeek[wk];
+    const pnl = trades.reduce((s, t) => s + t.pnl, 0);
+    const wins = trades.filter(t => t.pnl > 0).length;
+    const wr = Math.round(wins / trades.length * 100);
+    return `<tr>
+      <td>${wk} <small style="color:var(--text-secondary)">(${getWeekRange(wk)})</small></td>
+      <td>${trades.length}</td>
+      <td>${wr}%</td>
+      <td class="${pnl >= 0 ? 'positive' : 'negative'}">${formatPnL(pnl, c)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">Last 8 weeks</p>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Week</th><th>Trades</th><th>Win Rate</th><th>P&L</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderYearlyReport(enriched, c) {
+  const byYear = {};
+  for (const t of enriched) {
+    if (!t.entryDate) continue;
+    const y = t.entryDate.slice(0, 4);
+    if (!byYear[y]) byYear[y] = [];
+    byYear[y].push(t);
+  }
+  const years = Object.keys(byYear).sort().reverse();
+  if (!years.length) return '<p class="empty-state">No data.</p>';
+
+  const yearlyRows = years.map(y => {
+    const trades = byYear[y];
+    const pnl = trades.reduce((s, t) => s + t.pnl, 0);
+    const wins = trades.filter(t => t.pnl > 0).length;
+    const wr = Math.round(wins / trades.length * 100);
+    return `<tr>
+      <td>${y}</td>
+      <td>${trades.length}</td>
+      <td>${wr}%</td>
+      <td class="${pnl >= 0 ? 'positive' : 'negative'}">${formatPnL(pnl, c)}</td>
+    </tr>`;
+  }).join('');
+
+  const recentYear = years[0];
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthlyPnL = Array(12).fill(0);
+  for (const t of byYear[recentYear]) {
+    const m = parseInt((t.entryDate || '').slice(5, 7), 10) - 1;
+    if (m >= 0 && m < 12) monthlyPnL[m] += t.pnl;
+  }
+
+  const chartId = 'yearlyMonthlyChart';
+  setTimeout(() => {
+    const canvas = document.getElementById(chartId);
+    if (!canvas) return;
+    const existing = Chart.getChart ? Chart.getChart(canvas) : null;
+    if (existing) existing.destroy();
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: monthNames,
+        datasets: [{
+          label: `Monthly P&L (${recentYear})`,
+          data: monthlyPnL,
+          backgroundColor: monthlyPnL.map(v => v >= 0 ? 'rgba(0,200,150,0.7)' : 'rgba(255,77,109,0.7)'),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+          x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+        }
+      }
+    });
+  }, 50);
+
+  return `
+    <div class="table-wrapper" style="margin-bottom:24px;">
+      <table>
+        <thead><tr><th>Year</th><th>Trades</th><th>Win Rate</th><th>P&L</th></tr></thead>
+        <tbody>${yearlyRows}</tbody>
+      </table>
+    </div>
+    <div class="chart-card">
+      <h3>📅 Monthly P&L — ${recentYear}</h3>
+      <div class="chart-wrapper"><canvas id="${chartId}"></canvas></div>
+    </div>`;
+}
+
+window.switchReportsTab = switchReportsTab;
 
 // Close modal on backdrop click
 document.addEventListener('click', (e) => {

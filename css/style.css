@@ -832,3 +832,230 @@ tbody td { padding: 10px 14px; color: var(--text-primary); vertical-align: middl
 @media (max-width: 900px) {
   .dashboard-charts { grid-template-columns: 1fr; }
 }
+
+/* ─── Calendar ──────────────────────────────────────────────────────────────── */
+.calendar-stat-bar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  margin-bottom: 16px;
+}
+.cal-stat { display: flex; flex-direction: column; min-width: 90px; }
+.cal-stat-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+.cal-stat-value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.calendar-month-title { font-size: 18px; font-weight: 700; }
+
+.calendar-grid-wrapper { width: 100%; overflow-x: auto; }
+
+.calendar-header-row,
+.calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr) 80px;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.calendar-weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  text-transform: uppercase;
+}
+.calendar-day {
+  min-height: 72px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  padding: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.calendar-day:hover { border-color: var(--accent); transform: scale(1.02); }
+.day-filler { border: none; background: transparent; cursor: default; }
+.day-filler:hover { border: none; transform: none; }
+.day-empty { opacity: 0.4; cursor: default; }
+.day-empty:hover { border-color: var(--border); transform: none; }
+.day-today { border-color: var(--accent) !important; border-width: 2px !important; }
+.day-num { font-size: 13px; font-weight: 600; }
+.day-pnl { font-size: 11px; font-weight: 700; }
+.day-trade-count { font-size: 10px; color: var(--text-secondary); }
+
+.calendar-week-total {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+.calendar-monthly-total {
+  text-align: right;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Reports ────────────────────────────────────────────────────────────────── */
+.reports-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.report-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.report-tab:hover { color: var(--text-primary); }
+.report-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.row-highlight-best { background: rgba(0,200,150,0.08); }
+.row-highlight-worst { background: rgba(255,77,109,0.08); }
+
+/* ─── AI Analysis ────────────────────────────────────────────────────────────── */
+.ai-section-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 900px) { .ai-section-grid { grid-template-columns: 1fr; } }
+
+.ai-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ai-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+.ai-panel-header h3 { font-size: 15px; font-weight: 600; margin: 0; }
+
+.insight-cards-container { display: flex; flex-direction: column; gap: 10px; }
+.insight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.insight-good { border-left: 3px solid var(--green); }
+.insight-bad { border-left: 3px solid var(--red); }
+.insight-neutral { border-left: 3px solid var(--accent); }
+.insight-icon { font-size: 22px; flex-shrink: 0; }
+.insight-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.insight-body { font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
+
+.openai-key-section { background: var(--bg-sidebar); border-radius: 8px; padding: 12px; }
+
+.ai-chat-container {
+  flex: 1;
+  min-height: 200px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--bg-sidebar);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-message { display: flex; flex-direction: column; gap: 4px; }
+.chat-role { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.chat-text { font-size: 13px; color: var(--text-primary); line-height: 1.5; }
+.user-message { align-items: flex-end; }
+.user-message .chat-text { background: rgba(99,102,241,0.15); padding: 8px 12px; border-radius: 12px 12px 2px 12px; }
+.ai-message .chat-text { background: var(--bg-card); padding: 8px 12px; border-radius: 2px 12px 12px 12px; }
+.chat-thinking { color: var(--text-secondary); font-style: italic; }
+
+.ai-chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+/* ─── Achievements ───────────────────────────────────────────────────────────── */
+.achievements-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.achievements-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  transition: border-color 0.15s;
+}
+.achievement-unlocked { border-color: rgba(0,200,150,0.4); background: rgba(0,200,150,0.06); }
+.achievement-locked { opacity: 0.5; }
+.achievement-icon { font-size: 22px; flex-shrink: 0; }
+.achievement-info { flex: 1; min-width: 0; }
+.achievement-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.achievement-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.achievement-badge { font-size: 14px; font-weight: 700; color: var(--green); flex-shrink: 0; }
+
+/* ─── Daily Goals ────────────────────────────────────────────────────────────── */
+.daily-goals-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.daily-goals-grid { display: flex; flex-direction: column; gap: 12px; }
+.goal-item { display: flex; flex-direction: column; gap: 5px; }
+.goal-label { font-size: 13px; color: var(--text-secondary); }
+.goal-label strong { color: var(--text-primary); }
+.goal-progress-bar { height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+.goal-progress-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.goal-fill-green { background: var(--green); }
+.goal-fill-red { background: var(--red); }
+.goal-pct { font-size: 11px; color: var(--text-secondary); }

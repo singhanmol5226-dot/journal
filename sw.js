@@ -3,7 +3,7 @@
  * Caches all app assets and Chart.js for full offline use.
  */
 
-const CACHE_NAME = 'trade-journal-v1';
+const CACHE_NAME = 'trade-journal-v2';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -12,6 +12,8 @@ const STATIC_ASSETS = [
   './js/db.js',
   './js/analytics.js',
   './js/charts.js',
+  './js/calendar.js',
+  './js/ai.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js'
 ];
 
