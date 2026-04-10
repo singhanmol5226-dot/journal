@@ -396,44 +396,69 @@ async function confirmAndDeleteTrade(id) {
   }
 }
 
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function viewTrade(id) {
   const trade = allTrades.find(t => t.id === id);
   if (!trade) return;
   const pnl = calcPnL(trade);
   const outcome = calcOutcome(pnl);
 
-  const screenshotsHtml = (trade.screenshots || []).map((s, i) =>
-    `<img src="${s.dataUrl}" alt="Screenshot ${i + 1}" class="screenshot-thumb" onclick="openLightbox('${s.dataUrl}')">`
-  ).join('');
+  const screenshots = trade.screenshots || [];
+  const screenshotsHtml = screenshots.length
+    ? `<div class="full-width screenshots-section"><label>Screenshots</label><div class="screenshot-grid">${
+        screenshots.map((s, i) => `<img src="${escapeHtml(s.dataUrl)}" alt="Screenshot ${i + 1}" class="screenshot-thumb" data-ss-index="${i}">`).join('')
+      }</div></div>`
+    : '';
 
   const content = `
     <div class="trade-detail-grid">
-      <div><label>Date</label><span>${trade.entryDate || '—'} ${trade.entryTime || ''}</span></div>
-      <div><label>Exit</label><span>${trade.exitDate || '—'} ${trade.exitTime || ''}</span></div>
-      <div><label>Instrument</label><span>${trade.instrument || '—'}</span></div>
-      <div><label>Type</label><span class="badge ${trade.tradeType === 'Buy' ? 'badge-buy' : 'badge-sell'}">${trade.tradeType || '—'}</span></div>
-      <div><label>Entry Price</label><span>${trade.entryPrice || '—'}</span></div>
-      <div><label>Exit Price</label><span>${trade.exitPrice || '—'}</span></div>
-      <div><label>Quantity</label><span>${trade.quantity || '—'}</span></div>
-      <div><label>Fees</label><span>${trade.fees || '0'}</span></div>
-      <div><label>Stop Loss</label><span>${trade.stopLoss || '—'}</span></div>
-      <div><label>Target</label><span>${trade.target || '—'}</span></div>
-      <div><label>Strategy</label><span>${trade.strategy || '—'}</span></div>
-      <div><label>Setup Tags</label><span>${trade.setupTags || '—'}</span></div>
-      <div><label>Emotion Before</label><span>${trade.emotionBefore || '—'}</span></div>
-      <div><label>Emotion During</label><span>${trade.emotionDuring || '—'}</span></div>
+      <div><label>Date</label><span>${escapeHtml(trade.entryDate)} ${escapeHtml(trade.entryTime)}</span></div>
+      <div><label>Exit</label><span>${escapeHtml(trade.exitDate)} ${escapeHtml(trade.exitTime)}</span></div>
+      <div><label>Instrument</label><span>${escapeHtml(trade.instrument)}</span></div>
+      <div><label>Type</label><span class="badge ${trade.tradeType === 'Buy' ? 'badge-buy' : 'badge-sell'}">${escapeHtml(trade.tradeType)}</span></div>
+      <div><label>Entry Price</label><span>${escapeHtml(trade.entryPrice)}</span></div>
+      <div><label>Exit Price</label><span>${escapeHtml(trade.exitPrice)}</span></div>
+      <div><label>Quantity</label><span>${escapeHtml(trade.quantity)}</span></div>
+      <div><label>Fees</label><span>${escapeHtml(trade.fees || '0')}</span></div>
+      <div><label>Stop Loss</label><span>${escapeHtml(trade.stopLoss)}</span></div>
+      <div><label>Target</label><span>${escapeHtml(trade.target)}</span></div>
+      <div><label>Strategy</label><span>${escapeHtml(trade.strategy)}</span></div>
+      <div><label>Setup Tags</label><span>${escapeHtml(trade.setupTags)}</span></div>
+      <div><label>Emotion Before</label><span>${escapeHtml(trade.emotionBefore)}</span></div>
+      <div><label>Emotion During</label><span>${escapeHtml(trade.emotionDuring)}</span></div>
       <div class="full-width"><label>P&amp;L</label><span class="${pnl >= 0 ? 'positive' : 'negative'} large-pnl">${formatPnL(pnl, settings.currency)}</span></div>
-      <div class="full-width"><label>Outcome</label><span class="badge badge-${outcome.toLowerCase()}">${outcome}</span></div>
-      <div class="full-width"><label>Notes</label><p class="notes-text">${trade.notes || '—'}</p></div>
-      ${screenshotsHtml ? `<div class="full-width screenshots-section"><label>Screenshots</label><div class="screenshot-grid">${screenshotsHtml}</div></div>` : ''}
+      <div class="full-width"><label>Outcome</label><span class="badge badge-${outcome.toLowerCase()}">${escapeHtml(outcome)}</span></div>
+      <div class="full-width"><label>Notes</label><p class="notes-text">${escapeHtml(trade.notes)}</p></div>
+      ${screenshotsHtml}
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="editTrade(${id}); closeModal()">Edit</button>
-      <button class="btn btn-danger" onclick="handleDelete(${id})">Delete</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" id="modalEditBtn">Edit</button>
+      <button class="btn btn-danger" id="modalDeleteBtn">Delete</button>
+      <button class="btn btn-secondary" id="modalCloseBtn">Close</button>
     </div>
   `;
-  openModal(`Trade — ${trade.instrument || ''} ${trade.entryDate || ''}`, content);
+  openModal(`Trade — ${escapeHtml(trade.instrument)} ${escapeHtml(trade.entryDate)}`, content);
+
+  // Attach event listeners after modal is rendered
+  document.getElementById('modalEditBtn')?.addEventListener('click', () => { editTrade(id); closeModal(); });
+  document.getElementById('modalDeleteBtn')?.addEventListener('click', () => handleDelete(id));
+  document.getElementById('modalCloseBtn')?.addEventListener('click', closeModal);
+
+  // Screenshot lightbox
+  document.querySelectorAll('[data-ss-index]').forEach(img => {
+    img.addEventListener('click', () => {
+      const ssIdx = parseInt(img.dataset.ssIndex, 10);
+      openLightboxUrl(screenshots[ssIdx]?.dataUrl || '');
+    });
+  });
 }
 
 async function handleDelete(id) {
@@ -501,10 +526,17 @@ function renderScreenshotPreviews() {
   if (!container) return;
   container.innerHTML = pendingScreenshots.map((s, i) => `
     <div class="screenshot-preview-item">
-      <img src="${s.dataUrl}" alt="${s.name}" onclick="openLightbox('${s.dataUrl}')">
-      <button class="remove-screenshot" onclick="removeScreenshot(${i})" title="Remove">×</button>
+      <img src="${s.dataUrl}" alt="${escapeHtml(s.name)}" data-index="${i}" class="screenshot-thumb-preview">
+      <button class="remove-screenshot" data-index="${i}" title="Remove">×</button>
     </div>
   `).join('');
+
+  container.querySelectorAll('.screenshot-thumb-preview').forEach(img => {
+    img.addEventListener('click', () => openLightbox(parseInt(img.dataset.index, 10)));
+  });
+  container.querySelectorAll('.remove-screenshot').forEach(btn => {
+    btn.addEventListener('click', () => removeScreenshot(parseInt(btn.dataset.index, 10)));
+  });
 }
 
 function removeScreenshot(index) {
@@ -512,11 +544,24 @@ function removeScreenshot(index) {
   renderScreenshotPreviews();
 }
 
-function openLightbox(src) {
+function openLightbox(srcOrIndex) {
   const lb = document.getElementById('lightbox');
   const lbImg = document.getElementById('lightboxImg');
   if (lb && lbImg) {
-    lbImg.src = src;
+    if (typeof srcOrIndex === 'number') {
+      lbImg.src = pendingScreenshots[srcOrIndex]?.dataUrl || '';
+    } else {
+      lbImg.src = srcOrIndex;
+    }
+    lb.classList.add('active');
+  }
+}
+
+function openLightboxUrl(url) {
+  const lb = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lightboxImg');
+  if (lb && lbImg) {
+    lbImg.src = url;
     lb.classList.add('active');
   }
 }
@@ -741,23 +786,19 @@ function confirmImportMode() {
     const content = `
       <p>How would you like to import?</p>
       <div class="modal-actions">
-        <button class="btn btn-danger" onclick="resolveImport('replace')">Replace All</button>
-        <button class="btn btn-primary" onclick="resolveImport('merge')">Merge / Append</button>
-        <button class="btn btn-secondary" onclick="resolveImport('cancel')">Cancel</button>
+        <button class="btn btn-danger" id="importReplaceBtn">Replace All</button>
+        <button class="btn btn-primary" id="importMergeBtn">Merge / Append</button>
+        <button class="btn btn-secondary" id="importCancelBtn">Cancel</button>
       </div>
     `;
-    window._importResolve = resolve;
     openModal('Import Trades', content);
+
+    const done = (mode) => { closeModal(); resolve(mode); };
+    document.getElementById('importReplaceBtn')?.addEventListener('click', () => done('replace'));
+    document.getElementById('importMergeBtn')?.addEventListener('click', () => done('merge'));
+    document.getElementById('importCancelBtn')?.addEventListener('click', () => done('cancel'));
   });
 }
-
-window.resolveImport = function(mode) {
-  closeModal();
-  if (window._importResolve) {
-    window._importResolve(mode);
-    window._importResolve = null;
-  }
-};
 
 // ─── Settings Form ────────────────────────────────────────────────────────────
 function setupSettingsForm() {
@@ -817,6 +858,16 @@ document.addEventListener('click', (e) => {
   if (e.target === modal) closeModal();
   const lb = document.getElementById('lightbox');
   if (e.target === lb) closeLightbox();
+});
+
+// Keyboard: Escape to close modal/lightbox
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const lb = document.getElementById('lightbox');
+    if (lb && lb.classList.contains('active')) { closeLightbox(); return; }
+    const modal = document.getElementById('modal');
+    if (modal && modal.classList.contains('active')) closeModal();
+  }
 });
 
 // ─── Toast Notifications ──────────────────────────────────────────────────────

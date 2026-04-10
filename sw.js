@@ -45,16 +45,22 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) return cachedResponse;
       return fetch(event.request).then((response) => {
-        // Cache CDN resources
+        // Cache CDN resources — validate hostname to avoid caching arbitrary hosts
         if (response && response.status === 200) {
-          const url = event.request.url;
-          if (url.includes('cdn.jsdelivr.net') || url.includes('chart.js')) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
+          try {
+            const parsedUrl = new URL(event.request.url);
+            if (parsedUrl.hostname === 'cdn.jsdelivr.net') {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+          } catch (_) { /* ignore invalid URLs */ }
         }
         return response;
-      }).catch(() => cachedResponse);
+      }).catch(() => {
+        // Return cached response if available, otherwise return a generic offline response
+        if (cachedResponse) return cachedResponse;
+        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+      });
     })
   );
 });
