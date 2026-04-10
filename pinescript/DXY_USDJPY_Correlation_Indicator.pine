@@ -3,7 +3,7 @@
 // Designed for USDJPY 1-Minute Scalping | Max SL: 30 pips | TP: 80-100 pips
 
 //@version=6
-indicator("DXY-USDJPY Correlation Signals", shorttitle="DXY-JPY Corr", overlay=true, max_lines_count=20, max_labels_count=50, max_boxes_count=5)
+indicator("DXY-USDJPY Correlation Signals", shorttitle="DXY-JPY", overlay=true, max_lines_count=20, max_labels_count=50, max_boxes_count=5)
 
 // ─────────────────────────────────────────────
 //  INPUT SETTINGS
@@ -442,8 +442,11 @@ sell_msg = "🔴 SELL SIGNAL | Entry: " + str.tostring(close, "#.###") +
            " | TP3: " + str.tostring(close - tp3_dist, "#.###") +
            " | Corr: " + str.tostring(corr_med, "#.##")
 
-alertcondition(buy_signal,  title="BUY Signal",  message=buy_msg)
-alertcondition(sell_signal, title="SELL Signal", message=sell_msg)
+if buy_signal
+    alert(buy_msg, alert.freq_once_per_bar)
+
+if sell_signal
+    alert(sell_msg, alert.freq_once_per_bar)
 
 // TP / SL hit alerts
 // Detect the exact bar where each state variable transitions (false → true) using [1].
