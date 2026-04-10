@@ -32,6 +32,15 @@
       <a href="#" data-section="analytics">
         <span class="nav-icon">📊</span> Analytics
       </a>
+      <a href="#" data-section="calendar">
+        <span class="nav-icon">📅</span> Calendar
+      </a>
+      <a href="#" data-section="reports">
+        <span class="nav-icon">📊</span> Reports
+      </a>
+      <a href="#" data-section="ai">
+        <span class="nav-icon">🤖</span> AI Analysis
+      </a>
       <a href="#" data-section="settings">
         <span class="nav-icon">⚙️</span> Settings
       </a>
@@ -104,6 +113,17 @@
             <div class="card-label">Expectancy</div>
             <div class="card-value" id="cardExpectancy">—</div>
           </div>
+        </div>
+
+        <!-- Daily Goals -->
+        <div id="dailyGoalsSection" class="daily-goals-section" style="display:none;">
+          <div id="dailyGoalsContent"></div>
+        </div>
+
+        <!-- Achievements -->
+        <div class="achievements-section">
+          <h3>🏅 Achievements</h3>
+          <div id="achievementsGrid" class="achievements-grid"></div>
         </div>
 
         <!-- Dashboard Charts -->
@@ -481,6 +501,35 @@
         </div>
       </div><!-- /analytics -->
 
+      <!-- ─── Calendar Section ───────────────────────────────────────────── -->
+      <div id="section-calendar" class="section">
+        <div class="section-header">
+          <h2 class="section-title">Trading Calendar</h2>
+        </div>
+        <div id="calendarContainer"></div>
+      </div><!-- /calendar -->
+
+      <!-- ─── Reports Section ────────────────────────────────────────────── -->
+      <div id="section-reports" class="section">
+        <div class="section-header">
+          <h2 class="section-title">Reports</h2>
+        </div>
+        <div class="reports-tabs">
+          <button class="report-tab active" data-tab="monthly" onclick="switchReportsTab('monthly')">📅 Monthly</button>
+          <button class="report-tab" data-tab="weekly" onclick="switchReportsTab('weekly')">📆 Weekly</button>
+          <button class="report-tab" data-tab="yearly" onclick="switchReportsTab('yearly')">📈 Yearly</button>
+        </div>
+        <div id="reportsContent"></div>
+      </div><!-- /reports -->
+
+      <!-- ─── AI Analysis Section ────────────────────────────────────────── -->
+      <div id="section-ai" class="section">
+        <div class="section-header">
+          <h2 class="section-title">AI Analysis</h2>
+        </div>
+        <div id="aiContainer"></div>
+      </div><!-- /ai -->
+
       <!-- ─── Settings Section ───────────────────────────────────────────── -->
       <div id="section-settings" class="section">
         <div class="section-header">
@@ -499,6 +548,18 @@
               <div class="form-group full-width">
                 <label for="settingInstruments">Default Instruments (comma-separated)</label>
                 <input type="text" id="settingInstruments" placeholder="NIFTY,BANKNIFTY,AAPL,BTC">
+              </div>
+              <div class="form-group">
+                <label for="settingDailyGoal">Daily P&amp;L Goal</label>
+                <input type="number" id="settingDailyGoal" step="any" placeholder="e.g. 5000">
+              </div>
+              <div class="form-group">
+                <label for="settingMaxLoss">Max Daily Loss Limit</label>
+                <input type="number" id="settingMaxLoss" step="any" placeholder="e.g. 2000">
+              </div>
+              <div class="form-group full-width">
+                <label for="settingOpenAIKey">OpenAI API Key (optional)</label>
+                <input type="password" id="settingOpenAIKey" placeholder="sk-...">
               </div>
             </div>
             <div class="form-actions">
@@ -557,6 +618,8 @@
 <script src="js/db.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/charts.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/ai.js"></script>
 <script src="js/app.js"></script>
 
 <!-- Service Worker Registration -->
@@ -573,6 +636,9 @@
     add: 'Add Trade',
     log: 'Trade Log',
     analytics: 'Analytics',
+    calendar: 'Trading Calendar',
+    reports: 'Reports',
+    ai: 'AI Analysis',
     settings: 'Settings'
   };
 
