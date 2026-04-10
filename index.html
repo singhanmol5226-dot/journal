@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trade Journal — Offline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Chart.js from CDN — cached by service worker after first load -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+
+<!-- ─── App Layout ────────────────────────────────────────────────────────── -->
+<div class="app-wrapper">
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <h1>📈 Trade Journal</h1>
+      <p>Fully Offline · IndexedDB Powered</p>
+    </div>
+    <div class="sidebar-nav">
+      <a href="#" data-section="dashboard" class="active">
+        <span class="nav-icon">🏠</span> Dashboard
+      </a>
+      <a href="#" data-section="add">
+        <span class="nav-icon">➕</span> Add Trade
+      </a>
+      <a href="#" data-section="log">
+        <span class="nav-icon">📋</span> Trade Log
+      </a>
+      <a href="#" data-section="analytics">
+        <span class="nav-icon">📊</span> Analytics
+      </a>
+      <a href="#" data-section="settings">
+        <span class="nav-icon">⚙️</span> Settings
+      </a>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="topbar">
+      <button id="hamburger" aria-label="Menu">☰</button>
+      <h2 id="topbarTitle">Dashboard</h2>
+      <button class="btn btn-primary" id="quickAddBtn" onclick="showSection('add')">➕ Add Trade</button>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ─── Dashboard Section ─────────────────────────────────────────── -->
+      <div id="section-dashboard" class="section">
+        <div class="section-header">
+          <h2 class="section-title">Dashboard</h2>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="cards-grid">
+          <div class="stat-card">
+            <div class="card-label">Total Trades</div>
+            <div class="card-value" id="cardTotal">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Win Rate</div>
+            <div class="card-value" id="cardWinRate">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Total P&amp;L</div>
+            <div class="card-value" id="cardTotalPnL">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Avg Win</div>
+            <div class="card-value positive" id="cardAvgWin">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Avg Loss</div>
+            <div class="card-value negative" id="cardAvgLoss">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Largest Win</div>
+            <div class="card-value positive" id="cardLargestWin">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Largest Loss</div>
+            <div class="card-value negative" id="cardLargestLoss">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Profit Factor</div>
+            <div class="card-value" id="cardProfitFactor">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Avg R:R</div>
+            <div class="card-value" id="cardAvgRR">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Current Streak</div>
+            <div class="card-value" id="cardStreak">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Max Drawdown</div>
+            <div class="card-value negative" id="cardDrawdown">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="card-label">Expectancy</div>
+            <div class="card-value" id="cardExpectancy">—</div>
+          </div>
+        </div>
+
+        <!-- Dashboard Charts -->
+        <div class="dashboard-charts">
+          <div class="chart-card" style="grid-column: 1 / -1;">
+            <h3>📈 Equity Curve (Cumulative P&amp;L)</h3>
+            <div class="chart-wrapper"><canvas id="chartEquity"></canvas></div>
+          </div>
+        </div>
+        <div class="dashboard-charts">
+          <div class="chart-card">
+            <h3>📅 Daily P&amp;L</h3>
+            <div class="chart-wrapper"><canvas id="chartDailyPnL"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>🥧 Win / Loss Ratio</h3>
+            <div class="chart-wrapper"><canvas id="chartWinLoss"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="recent-trades-section">
+          <h3>🕐 Recent Trades</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Instrument</th>
+                  <th>Type</th>
+                  <th>Entry</th>
+                  <th>Exit</th>
+                  <th>P&amp;L</th>
+                  <th>Outcome</th>
+                </tr>
+              </thead>
+              <tbody id="recentTradesTbody">
+                <tr><td colspan="7" class="empty-state">No trades yet. Add your first trade!</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /dashboard -->
+
+      <!-- ─── Add Trade Section ──────────────────────────────────────────── -->
+      <div id="section-add" class="section">
+        <div class="section-header">
+          <h2 class="section-title" id="formTitle">Add New Trade</h2>
+        </div>
+
+        <form id="tradeForm">
+          <!-- Basic Info -->
+          <div class="form-card">
+            <h3>Trade Details</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="tradeEntryDate">Entry Date</label>
+                <input type="date" id="tradeEntryDate" required>
+              </div>
+              <div class="form-group">
+                <label for="tradeEntryTime">Entry Time</label>
+                <input type="time" id="tradeEntryTime">
+              </div>
+              <div class="form-group">
+                <label for="tradeExitDate">Exit Date</label>
+                <input type="date" id="tradeExitDate">
+              </div>
+              <div class="form-group">
+                <label for="tradeExitTime">Exit Time</label>
+                <input type="time" id="tradeExitTime">
+              </div>
+              <div class="form-group">
+                <label for="tradeInstrument">Instrument / Symbol</label>
+                <select id="tradeInstrument" required>
+                  <option value="">Select Instrument</option>
+                </select>
+              </div>
+              <div class="form-group" id="customInstrumentRow" style="display:none">
+                <label for="customInstrumentInput">Custom Instrument</label>
+                <input type="text" id="customInstrumentInput" placeholder="e.g. BTCUSD">
+              </div>
+              <div class="form-group">
+                <label for="tradeType">Trade Type</label>
+                <select id="tradeType" required>
+                  <option value="Buy">Buy / Long</option>
+                  <option value="Sell">Sell / Short</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Price Info -->
+          <div class="form-card">
+            <h3>Price &amp; Size</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="tradeEntryPrice">Entry Price</label>
+                <input type="number" id="tradeEntryPrice" step="any" placeholder="0.00" required>
+              </div>
+              <div class="form-group">
+                <label for="tradeExitPrice">Exit Price</label>
+                <input type="number" id="tradeExitPrice" step="any" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label for="tradeQuantity">Quantity / Lot Size</label>
+                <input type="number" id="tradeQuantity" step="any" placeholder="1" required>
+              </div>
+              <div class="form-group">
+                <label for="tradeFees">Fees / Commission</label>
+                <input type="number" id="tradeFees" step="any" placeholder="0.00" value="0">
+              </div>
+              <div class="form-group">
+                <label for="tradeStopLoss">Stop Loss</label>
+                <input type="number" id="tradeStopLoss" step="any" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label for="tradeTarget">Target Price</label>
+                <input type="number" id="tradeTarget" step="any" placeholder="0.00">
+              </div>
+              <div class="form-group full-width">
+                <label>Calculated P&amp;L &amp; Outcome</label>
+                <div class="pnl-preview" id="tradePnLPreview"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Strategy & Psychology -->
+          <div class="form-card">
+            <h3>Strategy &amp; Psychology</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="tradeStrategy">Strategy</label>
+                <select id="tradeStrategy">
+                  <option value="">Select Strategy</option>
+                  <option value="Breakout">Breakout</option>
+                  <option value="Reversal">Reversal</option>
+                  <option value="Scalping">Scalping</option>
+                  <option value="Swing">Swing</option>
+                  <option value="Trend Following">Trend Following</option>
+                  <option value="Range Trading">Range Trading</option>
+                  <option value="News/Event">News / Event</option>
+                  <option value="Options Selling">Options Selling</option>
+                  <option value="Gap Fill">Gap Fill</option>
+                  <option value="VWAP">VWAP</option>
+                  <option value="__custom__">+ Custom...</option>
+                </select>
+              </div>
+              <div class="form-group" id="customStrategyRow" style="display:none">
+                <label for="customStrategyInput">Custom Strategy</label>
+                <input type="text" id="customStrategyInput" placeholder="Enter strategy name">
+              </div>
+              <div class="form-group">
+                <label for="tradeSetupTags">Setup Tags</label>
+                <input type="text" id="tradeSetupTags" placeholder="e.g. Support bounce, Pin bar">
+              </div>
+              <div class="form-group">
+                <label for="tradeEmotionBefore">Emotion Before Trade</label>
+                <select id="tradeEmotionBefore">
+                  <option value="">Select Emotion</option>
+                  <option value="Confident">Confident</option>
+                  <option value="Fearful">Fearful</option>
+                  <option value="Greedy">Greedy</option>
+                  <option value="FOMO">FOMO</option>
+                  <option value="Calm">Calm</option>
+                  <option value="Revenge Trading">Revenge Trading</option>
+                  <option value="Neutral">Neutral</option>
+                  <option value="Excited">Excited</option>
+                  <option value="Anxious">Anxious</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="tradeEmotionDuring">Emotion During Trade</label>
+                <select id="tradeEmotionDuring">
+                  <option value="">Select Emotion</option>
+                  <option value="Confident">Confident</option>
+                  <option value="Fearful">Fearful</option>
+                  <option value="Greedy">Greedy</option>
+                  <option value="FOMO">FOMO</option>
+                  <option value="Calm">Calm</option>
+                  <option value="Revenge Trading">Revenge Trading</option>
+                  <option value="Neutral">Neutral</option>
+                  <option value="Excited">Excited</option>
+                  <option value="Anxious">Anxious</option>
+                  <option value="Panic">Panic</option>
+                </select>
+              </div>
+              <div class="form-group full-width">
+                <label for="tradeNotes">Notes / Remarks</label>
+                <textarea id="tradeNotes" rows="4" placeholder="Describe your trade setup, thoughts, and lessons learned..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Screenshots -->
+          <div class="form-card">
+            <h3>Screenshots</h3>
+            <div id="screenshotDropzone" class="screenshot-dropzone">
+              <div class="dz-icon">📷</div>
+              <p>Drag &amp; drop, click to browse, or paste (Ctrl+V) chart screenshots</p>
+              <small>Supports JPG, PNG, GIF, WebP — Multiple images allowed</small>
+            </div>
+            <input type="file" id="screenshotFileInput" accept="image/*" multiple style="display:none">
+            <div id="screenshotPreviews" class="screenshot-previews"></div>
+          </div>
+
+          <!-- Form Actions -->
+          <div class="form-actions">
+            <button type="submit" class="btn btn-success">💾 Save Trade</button>
+            <button type="button" id="cancelEdit" class="btn btn-secondary" style="display:none">✕ Cancel Edit</button>
+          </div>
+        </form>
+      </div><!-- /add trade -->
+
+      <!-- ─── Trade Log Section ──────────────────────────────────────────── -->
+      <div id="section-log" class="section">
+        <div class="section-header">
+          <h2 class="section-title">Trade Log</h2>
+          <span id="tradeCount" class="badge"></span>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-bar">
+          <div>
+            <div class="filter-label">From Date</div>
+            <input type="date" id="filterDateFrom">
+          </div>
+          <div>
+            <div class="filter-label">To Date</div>
+            <input type="date" id="filterDateTo">
+          </div>
+          <div>
+            <div class="filter-label">Instrument</div>
+            <input type="text" id="filterInstrument" placeholder="e.g. NIFTY">
+          </div>
+          <div>
+            <div class="filter-label">Strategy</div>
+            <input type="text" id="filterStrategy" placeholder="e.g. Breakout">
+          </div>
+          <div>
+            <div class="filter-label">Outcome</div>
+            <select id="filterOutcome">
+              <option value="">All</option>
+              <option value="Win">Win</option>
+              <option value="Loss">Loss</option>
+              <option value="Breakeven">Breakeven</option>
+            </select>
+          </div>
+          <div>
+            <div class="filter-label">Search Notes</div>
+            <input type="text" id="filterSearch" placeholder="Search...">
+          </div>
+          <div style="display:flex; align-items:flex-end;">
+            <button id="clearFilters" class="btn btn-secondary btn-sm">Clear</button>
+          </div>
+        </div>
+
+        <!-- Trade Table -->
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="entryDate">Date ⇅</th>
+                <th data-sort="instrument">Instrument</th>
+                <th data-sort="tradeType">Type</th>
+                <th data-sort="entryPrice">Entry</th>
+                <th data-sort="exitPrice">Exit</th>
+                <th data-sort="quantity">Qty</th>
+                <th data-sort="strategy">Strategy</th>
+                <th data-sort="pnl">P&amp;L ⇅</th>
+                <th data-sort="outcome">Outcome</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tradeLogTbody">
+              <tr><td colspan="10" class="empty-state">No trades found.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /log -->
+
+      <!-- ─── Analytics Section ─────────────────────────────────────────── -->
+      <div id="section-analytics" class="section">
+        <div class="section-header">
+          <h2 class="section-title">Analytics</h2>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3>📊 P&amp;L by Strategy</h3>
+            <div class="chart-wrapper"><canvas id="chartStrategy"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>📊 P&amp;L by Instrument</h3>
+            <div class="chart-wrapper"><canvas id="chartInstrument"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>📅 Trade Distribution by Day of Week</h3>
+            <div class="chart-wrapper"><canvas id="chartDow"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>🕐 Trade Distribution by Hour</h3>
+            <div class="chart-wrapper"><canvas id="chartHour"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>🧠 Emotion vs Performance</h3>
+            <div class="chart-wrapper"><canvas id="chartEmotion"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>⚡ Risk-Reward Scatter</h3>
+            <div class="chart-wrapper"><canvas id="chartRR"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Strategy Breakdown Table -->
+        <div class="analytics-section">
+          <h3>📊 Strategy Breakdown</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Strategy</th>
+                  <th>Trades</th>
+                  <th>Win Rate</th>
+                  <th>Avg P&amp;L</th>
+                  <th>Total P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody id="strategyTbody">
+                <tr><td colspan="5" class="empty-state">No data</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Instrument Breakdown Table -->
+        <div class="analytics-section">
+          <h3>📈 Instrument Breakdown</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Instrument</th>
+                  <th>Trades</th>
+                  <th>Win Rate</th>
+                  <th>Avg P&amp;L</th>
+                  <th>Total P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody id="instrumentTbody">
+                <tr><td colspan="5" class="empty-state">No data</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Monthly Summary Table -->
+        <div class="analytics-section">
+          <h3>📆 Monthly Summary</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Trades</th>
+                  <th>Win Rate</th>
+                  <th>Total P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody id="monthlyTbody">
+                <tr><td colspan="4" class="empty-state">No data</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /analytics -->
+
+      <!-- ─── Settings Section ───────────────────────────────────────────── -->
+      <div id="section-settings" class="section">
+        <div class="section-header">
+          <h2 class="section-title">Settings</h2>
+        </div>
+
+        <div class="settings-section">
+          <!-- Preferences -->
+          <div class="settings-card">
+            <h3>Preferences</h3>
+            <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+              <div class="form-group">
+                <label for="settingCurrency">Currency Symbol</label>
+                <input type="text" id="settingCurrency" placeholder="₹" maxlength="3">
+              </div>
+              <div class="form-group full-width">
+                <label for="settingInstruments">Default Instruments (comma-separated)</label>
+                <input type="text" id="settingInstruments" placeholder="NIFTY,BANKNIFTY,AAPL,BTC">
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="saveSettings">💾 Save Settings</button>
+            </div>
+          </div>
+
+          <!-- Backup & Restore -->
+          <div class="settings-card">
+            <h3>Backup &amp; Restore</h3>
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 14px;">
+              Export all your trades to a JSON file for backup, or import a previous backup.
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button class="btn btn-success" id="exportBtn">⬇️ Export to JSON</button>
+              <button class="btn btn-secondary" id="importBtn">⬆️ Import from JSON</button>
+              <input type="file" id="importInput" accept=".json" style="display:none">
+            </div>
+          </div>
+
+          <!-- Danger Zone -->
+          <div class="settings-card danger-zone">
+            <h3>⚠️ Danger Zone</h3>
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 14px;">
+              Permanently delete all trade data from this device. This cannot be undone.
+            </p>
+            <button class="btn btn-danger" id="clearAllData">🗑️ Clear All Data</button>
+          </div>
+        </div>
+      </div><!-- /settings -->
+
+    </div><!-- /page-content -->
+  </div><!-- /main-content -->
+</div><!-- /app-wrapper -->
+
+<!-- ─── Modal ─────────────────────────────────────────────────────────────── -->
+<div id="modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalTitle">Trade Details</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- ─── Lightbox ──────────────────────────────────────────────────────────── -->
+<div id="lightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" src="" alt="Screenshot" onclick="event.stopPropagation()">
+</div>
+
+<!-- ─── Toast Container ──────────────────────────────────────────────────── -->
+<div id="toastContainer"></div>
+
+<!-- ─── JS Files ──────────────────────────────────────────────────────────── -->
+<script src="js/db.js"></script>
+<script src="js/analytics.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+
+<!-- Service Worker Registration -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+
+  // Update topbar title on section change
+  const sectionTitles = {
+    dashboard: 'Dashboard',
+    add: 'Add Trade',
+    log: 'Trade Log',
+    analytics: 'Analytics',
+    settings: 'Settings'
+  };
+
+  const origShowSection = typeof showSection !== 'undefined' ? showSection : null;
+  // Patch after DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', () => {
+    const topbarTitle = document.getElementById('topbarTitle');
+    document.querySelectorAll('[data-section]').forEach(el => {
+      el.addEventListener('click', () => {
+        const s = el.getAttribute('data-section');
+        if (topbarTitle && sectionTitles[s]) topbarTitle.textContent = sectionTitles[s];
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
