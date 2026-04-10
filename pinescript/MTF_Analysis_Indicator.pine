@@ -39,11 +39,17 @@ i_st_period   = input.int(10,   "Supertrend ATR Period",   minval=1,   maxval=50
 i_min_strong  = input.int(5,    "TFs for STRONG signal",   minval=3,   maxval=5,    group=grp_signal, tooltip="How many of 5 timeframes must agree for a STRONG BUY/SELL signal")
 i_min_regular = input.int(4,    "TFs for BUY/SELL signal", minval=2,   maxval=5,    group=grp_signal, tooltip="How many of 5 timeframes for a regular BUY/SELL signal")
 i_also_regular = input.bool(false, "Also signal on BUY/SELL (not just STRONG)", group=grp_signal)
-i_cooldown    = input.int(30,   "Signal Cooldown (bars)",  minval=1,   maxval=200,  group=grp_signal)
+i_cooldown    = input.int(60,   "Signal Cooldown (bars)",  minval=1,   maxval=500,  group=grp_signal, tooltip="Bars to wait after a signal before a new one can fire. 60 bars = 1 hour on 1M chart.")
+i_vol_filter  = input.bool(false, "Enable Volume Filter",                              group=grp_signal, tooltip="Only signal when current bar volume is above its moving average.")
+i_vol_ma_len  = input.int(20,   "Volume MA Length",        minval=5,   maxval=100,   group=grp_signal)
+i_min_move    = input.bool(true,  "Enable Minimum Move Filter",                        group=grp_signal, tooltip="Require a minimum price movement (0.3x ATR) before signaling to avoid flat/choppy markets.")
+i_min_ema_dist = input.float(2.0, "Min EMA Distance (pips)", minval=0.0, maxval=20.0, step=0.5, group=grp_signal, tooltip="Price must be at least this many pips away from EMA9 to confirm entry direction.")
 
 i_sl_method   = input.string("ATR", "SL Method",           options=["ATR", "Fixed Pips"], group=grp_sl_tp)
 i_atr_period  = input.int(14,   "ATR Period",              minval=1,   maxval=50,   group=grp_sl_tp)
+i_atr_tf      = input.string("15", "ATR Source Timeframe", options=["5", "15", "60", "240"], group=grp_sl_tp, tooltip="Timeframe to pull ATR from. 15M gives more meaningful volatility for SL sizing. Default: 15M.")
 i_atr_mult    = input.float(2.0, "ATR Multiplier for SL",  minval=0.5, maxval=5.0,  step=0.1, group=grp_sl_tp)
+i_min_sl_pips = input.float(10.0, "Min SL (pips)",         minval=2.0, maxval=50.0, step=1.0, group=grp_sl_tp, tooltip="Minimum SL size in pips. Prevents tiny SLs that trigger on normal noise. Default: 10 pips.")
 i_max_sl_pips = input.float(30.0, "Max SL (pips)",         minval=5.0, maxval=100.0, step=1.0, group=grp_sl_tp)
 i_fixed_sl    = input.float(25.0, "Fixed SL (pips)",       minval=5.0, maxval=100.0, step=1.0, group=grp_sl_tp)
 i_tp1_rr      = input.float(2.0, "TP1 R:R Ratio",          minval=1.0, maxval=10.0,  step=0.5, group=grp_sl_tp)
@@ -63,9 +69,11 @@ i_show_lines    = input.bool(true,   "Show TP/SL Lines",                 group=g
 i_show_trade_bg = input.bool(true,   "Background Color During Trade",    group=grp_display)
 
 // ─────────────────────────────────────────────
-//  PIP VALUE (USDJPY: 1 pip = 0.01)
+//  PIP VALUE
+//  JPY pairs: 1 pip = 0.01 | Others (EUR/USD etc.): 1 pip = 0.0001
+//  mintick >= 0.005 covers both 2-decimal (0.01) and 3-decimal (0.001) JPY brokers
 // ─────────────────────────────────────────────
-pip = syminfo.mintick * 10
+pip = syminfo.mintick >= 0.005 ? 0.01 : 0.0001
 
 // ─────────────────────────────────────────────
 //  HELPER FUNCTIONS
@@ -74,7 +82,8 @@ to_pips(dist) =>
     math.round(dist / pip)
 
 calc_sl(atr_val) =>
-    i_sl_method == "ATR" ? math.min(atr_val * i_atr_mult, i_max_sl_pips * pip) : i_fixed_sl * pip
+    raw_sl = i_sl_method == "ATR" ? atr_val * i_atr_mult : i_fixed_sl * pip
+    math.min(math.max(raw_sl, i_min_sl_pips * pip), i_max_sl_pips * pip)
 
 // ─────────────────────────────────────────────
 //  MTF DATA FUNCTION
@@ -131,7 +140,7 @@ bull_count = (bull_1m ? 1 : 0) + (bull_5m ? 1 : 0) + (bull_15m ? 1 : 0) + (bull_
 bear_count = 5 - bull_count
 
 // ─────────────────────────────────────────────
-//  OVERALL SIGNAL
+//  OVERALL SIGNAL (static — used for labels, dashboard, alertcondition)
 // ─────────────────────────────────────────────
 strong_buy   = bull_count >= i_min_strong
 regular_buy  = bull_count >= i_min_regular and bull_count < i_min_strong
@@ -139,6 +148,15 @@ weak_buy     = bull_count == 3 and bull_count < i_min_regular
 strong_sell  = bear_count >= i_min_strong
 regular_sell = bear_count >= i_min_regular and bear_count < i_min_strong
 weak_sell    = bear_count == 3 and bear_count < i_min_regular
+
+// ─────────────────────────────────────────────
+//  TRANSITION DETECTION (crossover of alignment score)
+//  Signals only fire when the score freshly crosses the threshold — not on every bar
+// ─────────────────────────────────────────────
+strong_buy_cross   = ta.crossover( bull_count, i_min_strong - 0.5)
+strong_sell_cross  = ta.crossunder(bull_count, 5 - i_min_strong + 0.5)
+regular_buy_cross  = ta.crossover( bull_count, i_min_regular - 0.5)
+regular_sell_cross = ta.crossunder(bull_count, 5 - i_min_regular + 0.5)
 
 // ─────────────────────────────────────────────
 //  SESSION DETECTION (UTC / GMT+0)
@@ -157,16 +175,26 @@ session_ok     = not i_use_sessions or in_any_session
 adx_ok = as_5m and as_15m
 
 // 1M entry confirmation: price must be on the right side of the fast EMAs
+// and at least i_min_ema_dist pips away (avoids whipsaws at the crossover point)
 e9_val  = ta.ema(close, i_ema9)
 e21_val = ta.ema(close, i_ema21)
-price_confirm_buy  = close > e9_val and e9_val > e21_val
-price_confirm_sell = close < e9_val and e9_val < e21_val
+price_confirm_buy  = close > e9_val and e9_val > e21_val and (close - e9_val) >= i_min_ema_dist * pip
+price_confirm_sell = close < e9_val and e9_val < e21_val and (e9_val - close) >= i_min_ema_dist * pip
 
-raw_buy  = (strong_buy  or (i_also_regular and regular_buy))  and session_ok and adx_ok and price_confirm_buy
-raw_sell = (strong_sell or (i_also_regular and regular_sell)) and session_ok and adx_ok and price_confirm_sell
+// Volume filter: only signal when volume is above its moving average
+vol_ma  = ta.sma(volume, i_vol_ma_len)
+vol_ok  = not i_vol_filter or volume > vol_ma
+
+// Minimum price movement filter: avoid signals in flat/choppy markets
+atr_1m      = ta.atr(i_atr_period)
+min_move_ok = not i_min_move or math.abs(close - close[1]) > 0.3 * atr_1m
+
+// Signals fire on TRANSITIONS (alignment score crosses threshold), not static conditions
+raw_buy  = (strong_buy_cross  or (i_also_regular and regular_buy_cross))  and session_ok and adx_ok and price_confirm_buy  and vol_ok and min_move_ok
+raw_sell = (strong_sell_cross or (i_also_regular and regular_sell_cross)) and session_ok and adx_ok and price_confirm_sell and vol_ok and min_move_ok
 
 var int bars_since_sig = 0
-bars_since_sig := bars_since_sig >= i_cooldown ? bars_since_sig : bars_since_sig + 1
+bars_since_sig := bars_since_sig + 1
 
 buy_signal  = raw_buy  and bars_since_sig >= i_cooldown
 sell_signal = raw_sell and bars_since_sig >= i_cooldown
@@ -177,7 +205,7 @@ if buy_signal or sell_signal
 // ─────────────────────────────────────────────
 //  ATR & SL/TP DISTANCES
 // ─────────────────────────────────────────────
-atr_val  = request.security(syminfo.tickerid, "5", ta.atr(i_atr_period))
+atr_val  = request.security(syminfo.tickerid, i_atr_tf, ta.atr(i_atr_period))
 sl_dist  = calc_sl(atr_val)
 tp1_dist = sl_dist * i_tp1_rr
 tp2_dist = sl_dist * i_tp2_rr
