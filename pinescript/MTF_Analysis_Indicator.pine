@@ -3,7 +3,7 @@
 // Designed for USDJPY 1-Minute Scalping | MTF Alignment | Max SL: 30 pips | TP: 80-100 pips
 
 //@version=6
-indicator("USDJPY MTF Analysis", shorttitle="MTF Analysis", overlay=true, max_lines_count=10, max_labels_count=50, max_boxes_count=5)
+indicator("USDJPY MTF Analysis", shorttitle="USDJPY MTF", overlay=true, max_lines_count=10, max_labels_count=50, max_boxes_count=5)
 
 // ─────────────────────────────────────────────
 //  INPUT GROUPS
@@ -529,12 +529,20 @@ strong_sell_msg = "🔴🔴 STRONG SELL | USDJPY MTF" +
                   " | TP3: "   + str.tostring(close - tp3_dist, "#.###") +
                   " | TFs: "   + str.tostring(bear_count) + "/5 Bearish"
 
-alertcondition(buy_signal,   title="STRONG BUY Signal",  message=strong_buy_msg)
-alertcondition(sell_signal,  title="STRONG SELL Signal", message=strong_sell_msg)
+if buy_signal
+    alert(strong_buy_msg, alert.freq_once_per_bar_close)
+
+if sell_signal
+    alert(strong_sell_msg, alert.freq_once_per_bar_close)
+
 alertcondition(strong_buy,   title="Strong Buy (any bar)",  message="🟢🟢 STRONG BUY | All timeframes bullish | USDJPY MTF")
 alertcondition(strong_sell,  title="Strong Sell (any bar)", message="🔴🔴 STRONG SELL | All timeframes bearish | USDJPY MTF")
-alertcondition(regular_buy,  title="BUY Signal",  message="🟢 BUY | " + str.tostring(bull_count) + "/5 TFs bullish | USDJPY MTF")
-alertcondition(regular_sell, title="SELL Signal", message="🔴 SELL | " + str.tostring(bear_count) + "/5 TFs bearish | USDJPY MTF")
+
+if regular_buy
+    alert("🟢 BUY | " + str.tostring(bull_count) + "/5 TFs bullish | USDJPY MTF", alert.freq_once_per_bar_close)
+
+if regular_sell
+    alert("🔴 SELL | " + str.tostring(bear_count) + "/5 TFs bearish | USDJPY MTF", alert.freq_once_per_bar_close)
 
 // TP / SL event detection
 tp1_hit_evt = tp1_hit and not tp1_hit[1]
