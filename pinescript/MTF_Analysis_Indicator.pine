@@ -1,0 +1,548 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// © USDJPY Multi-Timeframe Analysis Indicator v1.0
+// Designed for USDJPY 1-Minute Scalping | MTF Alignment | Max SL: 30 pips | TP: 80-100 pips
+
+//@version=6
+indicator("USDJPY MTF Analysis", shorttitle="MTF Analysis", overlay=true, max_lines_count=10, max_labels_count=50, max_boxes_count=5)
+
+// ─────────────────────────────────────────────
+//  INPUT GROUPS
+// ─────────────────────────────────────────────
+grp_ema     = "EMA Settings"
+grp_rsi     = "RSI Settings"
+grp_macd    = "MACD Settings"
+grp_adx     = "ADX & Supertrend Settings"
+grp_signal  = "Signal Settings"
+grp_sl_tp   = "Stop Loss & Take Profit"
+grp_session = "Session Filter"
+grp_display = "Display Settings"
+
+// ─────────────────────────────────────────────
+//  INPUTS
+// ─────────────────────────────────────────────
+i_ema9        = input.int(9,    "EMA Fast Period",         minval=2,   maxval=50,   group=grp_ema)
+i_ema21       = input.int(21,   "EMA Mid Period",          minval=5,   maxval=100,  group=grp_ema)
+i_ema50       = input.int(50,   "EMA Slow Period",         minval=10,  maxval=200,  group=grp_ema)
+i_ema200      = input.int(200,  "EMA Major Period",        minval=50,  maxval=500,  group=grp_ema)
+
+i_rsi_period  = input.int(14,   "RSI Period",              minval=2,   maxval=50,   group=grp_rsi)
+
+i_macd_fast   = input.int(12,   "MACD Fast Length",        minval=2,   maxval=50,   group=grp_macd)
+i_macd_slow   = input.int(26,   "MACD Slow Length",        minval=5,   maxval=100,  group=grp_macd)
+i_macd_signal = input.int(9,    "MACD Signal Length",      minval=2,   maxval=50,   group=grp_macd)
+
+i_adx_period  = input.int(14,   "ADX Period",              minval=2,   maxval=50,   group=grp_adx)
+i_adx_thresh  = input.int(25,   "ADX Trend Threshold",     minval=10,  maxval=60,   group=grp_adx, tooltip="ADX above this = trending market. Default: 25")
+i_st_factor   = input.float(3.0,"Supertrend Factor",       minval=1.0, maxval=10.0, step=0.5, group=grp_adx)
+i_st_period   = input.int(10,   "Supertrend ATR Period",   minval=1,   maxval=50,   group=grp_adx)
+
+i_min_strong  = input.int(5,    "TFs for STRONG signal",   minval=3,   maxval=5,    group=grp_signal, tooltip="How many of 5 timeframes must agree for a STRONG BUY/SELL signal")
+i_min_regular = input.int(4,    "TFs for BUY/SELL signal", minval=2,   maxval=5,    group=grp_signal, tooltip="How many of 5 timeframes for a regular BUY/SELL signal")
+i_also_regular = input.bool(false, "Also signal on BUY/SELL (not just STRONG)", group=grp_signal)
+i_cooldown    = input.int(10,   "Signal Cooldown (bars)",  minval=1,   maxval=200,  group=grp_signal)
+
+i_sl_method   = input.string("ATR", "SL Method",           options=["ATR", "Fixed Pips"], group=grp_sl_tp)
+i_atr_period  = input.int(14,   "ATR Period",              minval=1,   maxval=50,   group=grp_sl_tp)
+i_atr_mult    = input.float(1.5, "ATR Multiplier for SL",  minval=0.5, maxval=5.0,  step=0.1, group=grp_sl_tp)
+i_max_sl_pips = input.float(30.0, "Max SL (pips)",         minval=5.0, maxval=100.0, step=1.0, group=grp_sl_tp)
+i_fixed_sl    = input.float(25.0, "Fixed SL (pips)",       minval=5.0, maxval=100.0, step=1.0, group=grp_sl_tp)
+i_tp1_rr      = input.float(2.0, "TP1 R:R Ratio",          minval=1.0, maxval=10.0,  step=0.5, group=grp_sl_tp)
+i_tp2_rr      = input.float(3.0, "TP2 R:R Ratio",          minval=1.0, maxval=15.0,  step=0.5, group=grp_sl_tp)
+i_tp3_rr      = input.float(4.0, "TP3 R:R Ratio",          minval=1.0, maxval=20.0,  step=0.5, group=grp_sl_tp)
+
+i_use_sessions  = input.bool(false,  "Filter Signals by Session",        group=grp_session)
+i_london        = input.bool(true,   "London (08:00–16:00 GMT)",         group=grp_session)
+i_newyork       = input.bool(true,   "New York (13:00–21:00 GMT)",       group=grp_session)
+i_tokyo         = input.bool(true,   "Tokyo (00:00–09:00 GMT)",          group=grp_session)
+i_show_bg_sess  = input.bool(true,   "Highlight Sessions on Chart",      group=grp_session)
+
+i_show_table    = input.bool(true,   "Show Dashboard Table",             group=grp_display)
+i_table_pos     = input.string("Top Right", "Table Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grp_display)
+i_show_labels   = input.bool(true,   "Show Signal Labels",               group=grp_display)
+i_show_lines    = input.bool(true,   "Show TP/SL Lines",                 group=grp_display)
+i_show_trade_bg = input.bool(true,   "Background Color During Trade",    group=grp_display)
+
+// ─────────────────────────────────────────────
+//  PIP VALUE (USDJPY: 1 pip = 0.01)
+// ─────────────────────────────────────────────
+pip = syminfo.mintick * 10
+
+// ─────────────────────────────────────────────
+//  HELPER FUNCTIONS
+// ─────────────────────────────────────────────
+to_pips(dist) =>
+    math.round(dist / pip)
+
+calc_sl(atr_val) =>
+    i_sl_method == "ATR" ? math.min(atr_val * i_atr_mult, i_max_sl_pips * pip) : i_fixed_sl * pip
+
+// ─────────────────────────────────────────────
+//  MTF DATA FUNCTION
+//  Returns: [ema_fast_bull, ema_slow_bull, rsi_bull, macd_bull, st_bull, adx_strong, rsi_val, adx_val]
+// ─────────────────────────────────────────────
+get_tf_data() =>
+    e9   = ta.ema(close, i_ema9)
+    e21  = ta.ema(close, i_ema21)
+    e50  = ta.ema(close, i_ema50)
+    e200 = ta.ema(close, i_ema200)
+    rsi  = ta.rsi(close, i_rsi_period)
+    [ml, sig, hist] = ta.macd(close, i_macd_fast, i_macd_slow, i_macd_signal)
+    [dp, dm, adx]   = ta.dmi(i_adx_period, i_adx_period)
+    [st, st_dir]    = ta.supertrend(i_st_factor, i_st_period)
+
+    ef_bull = e9 > e21           // EMA9 > EMA21 = fast trend bullish
+    es_bull = e50 > e200         // EMA50 > EMA200 = golden cross / major trend bullish
+    r_bull  = rsi > 50           // RSI above midpoint = bullish momentum
+    m_bull  = ml > sig           // MACD line above signal = bullish
+    s_bull  = st_dir == -1       // Supertrend direction -1 = uptrend (price above supertrend)
+    a_str   = adx > i_adx_thresh // ADX above threshold = trending (not ranging)
+
+    [ef_bull, es_bull, r_bull, m_bull, s_bull, a_str, rsi, adx]
+
+// ─────────────────────────────────────────────
+//  FETCH DATA FOR EACH TIMEFRAME
+// ─────────────────────────────────────────────
+[ef_1m,  es_1m,  rb_1m,  mb_1m,  sb_1m,  as_1m,  rv_1m,  av_1m]  = get_tf_data()
+[ef_5m,  es_5m,  rb_5m,  mb_5m,  sb_5m,  as_5m,  rv_5m,  av_5m]  = request.security(syminfo.tickerid, "5",   get_tf_data())
+[ef_15m, es_15m, rb_15m, mb_15m, sb_15m, as_15m, rv_15m, av_15m] = request.security(syminfo.tickerid, "15",  get_tf_data())
+[ef_1h,  es_1h,  rb_1h,  mb_1h,  sb_1h,  as_1h,  rv_1h,  av_1h]  = request.security(syminfo.tickerid, "60",  get_tf_data())
+[ef_4h,  es_4h,  rb_4h,  mb_4h,  sb_4h,  as_4h,  rv_4h,  av_4h]  = request.security(syminfo.tickerid, "240", get_tf_data())
+
+// ─────────────────────────────────────────────
+//  TIMEFRAME SCORE (5 indicators: EMA fast, EMA slow, RSI, MACD, Supertrend)
+// ─────────────────────────────────────────────
+score_tf(ef, es, rb, mb, sb) =>
+    (ef ? 1 : 0) + (es ? 1 : 0) + (rb ? 1 : 0) + (mb ? 1 : 0) + (sb ? 1 : 0)
+
+sc_1m  = score_tf(ef_1m,  es_1m,  rb_1m,  mb_1m,  sb_1m)
+sc_5m  = score_tf(ef_5m,  es_5m,  rb_5m,  mb_5m,  sb_5m)
+sc_15m = score_tf(ef_15m, es_15m, rb_15m, mb_15m, sb_15m)
+sc_1h  = score_tf(ef_1h,  es_1h,  rb_1h,  mb_1h,  sb_1h)
+sc_4h  = score_tf(ef_4h,  es_4h,  rb_4h,  mb_4h,  sb_4h)
+
+// Timeframe is bullish when 3+ out of 5 indicators agree
+bull_1m  = sc_1m  >= 3
+bull_5m  = sc_5m  >= 3
+bull_15m = sc_15m >= 3
+bull_1h  = sc_1h  >= 3
+bull_4h  = sc_4h  >= 3
+
+bull_count = (bull_1m ? 1 : 0) + (bull_5m ? 1 : 0) + (bull_15m ? 1 : 0) + (bull_1h ? 1 : 0) + (bull_4h ? 1 : 0)
+bear_count = 5 - bull_count
+
+// ─────────────────────────────────────────────
+//  OVERALL SIGNAL
+// ─────────────────────────────────────────────
+strong_buy   = bull_count >= i_min_strong
+regular_buy  = bull_count >= i_min_regular and bull_count < i_min_strong
+weak_buy     = bull_count == 3 and bull_count < i_min_regular
+strong_sell  = bear_count >= i_min_strong
+regular_sell = bear_count >= i_min_regular and bear_count < i_min_strong
+weak_sell    = bear_count == 3 and bear_count < i_min_regular
+
+// ─────────────────────────────────────────────
+//  SESSION DETECTION (UTC / GMT+0)
+// ─────────────────────────────────────────────
+in_london  = not na(time(timeframe.period, "0800-1600", "GMT+0"))
+in_newyork = not na(time(timeframe.period, "1300-2100", "GMT+0"))
+in_tokyo   = not na(time(timeframe.period, "0000-0900", "GMT+0"))
+
+in_any_session = (i_london and in_london) or (i_newyork and in_newyork) or (i_tokyo and in_tokyo)
+session_ok     = not i_use_sessions or in_any_session
+
+// ─────────────────────────────────────────────
+//  SIGNAL TRIGGER WITH COOLDOWN
+// ─────────────────────────────────────────────
+raw_buy  = (strong_buy  or (i_also_regular and regular_buy))  and session_ok
+raw_sell = (strong_sell or (i_also_regular and regular_sell)) and session_ok
+
+var int bars_since_sig = 0
+bars_since_sig := bars_since_sig >= i_cooldown ? bars_since_sig : bars_since_sig + 1
+
+buy_signal  = raw_buy  and bars_since_sig >= i_cooldown
+sell_signal = raw_sell and bars_since_sig >= i_cooldown
+
+if buy_signal or sell_signal
+    bars_since_sig := 0
+
+// ─────────────────────────────────────────────
+//  ATR & SL/TP DISTANCES
+// ─────────────────────────────────────────────
+atr_val  = ta.atr(i_atr_period)
+sl_dist  = calc_sl(atr_val)
+tp1_dist = sl_dist * i_tp1_rr
+tp2_dist = sl_dist * i_tp2_rr
+tp3_dist = sl_dist * i_tp3_rr
+
+// ─────────────────────────────────────────────
+//  TRADE STATE (persistent)
+// ─────────────────────────────────────────────
+var float entry_price  = na
+var float sl_price     = na
+var float tp1_price    = na
+var float tp2_price    = na
+var float tp3_price    = na
+var int   trade_dir    = 0    // 1=long, -1=short, 0=flat
+var bool  tp1_hit      = false
+var bool  tp2_hit      = false
+var bool  tp3_hit      = false
+
+var line  ln_entry     = na
+var line  ln_sl        = na
+var line  ln_tp1       = na
+var line  ln_tp2       = na
+var line  ln_tp3       = na
+
+// Statistics
+var int   total_sigs   = 0
+var int   total_wins   = 0
+var int   total_losses = 0
+var float total_pips   = 0.0
+
+// ─────────────────────────────────────────────
+//  HELPER: delete active trade lines
+// ─────────────────────────────────────────────
+delete_trade_lines() =>
+    if not na(ln_entry)
+        line.delete(ln_entry)
+    if not na(ln_sl)
+        line.delete(ln_sl)
+    if not na(ln_tp1)
+        line.delete(ln_tp1)
+    if not na(ln_tp2)
+        line.delete(ln_tp2)
+    if not na(ln_tp3)
+        line.delete(ln_tp3)
+
+// ─────────────────────────────────────────────
+//  TRADE OPEN — BUY
+// ─────────────────────────────────────────────
+if buy_signal and trade_dir == 0
+    delete_trade_lines()
+    entry_price  := close
+    sl_price     := close - sl_dist
+    tp1_price    := close + tp1_dist
+    tp2_price    := close + tp2_dist
+    tp3_price    := close + tp3_dist
+    trade_dir    := 1
+    tp1_hit      := false
+    tp2_hit      := false
+    tp3_hit      := false
+    total_sigs   := total_sigs + 1
+
+    if i_show_lines
+        ln_sl    := line.new(bar_index, sl_price,    bar_index + 1, sl_price,    color=color.red,   style=line.style_dashed, width=2)
+        ln_entry := line.new(bar_index, entry_price, bar_index + 1, entry_price, color=color.white,  style=line.style_solid,  width=2)
+        ln_tp1   := line.new(bar_index, tp1_price,   bar_index + 1, tp1_price,   color=color.lime,   style=line.style_dotted, width=1)
+        ln_tp2   := line.new(bar_index, tp2_price,   bar_index + 1, tp2_price,   color=color.green,  style=line.style_dotted, width=2)
+        ln_tp3   := line.new(bar_index, tp3_price,   bar_index + 1, tp3_price,   color=color.teal,   style=line.style_dotted, width=3)
+
+    if i_show_labels
+        sig_lbl = strong_buy ? "🟢🟢 STRONG BUY" : "🟢 BUY"
+        label.new(bar_index, low - atr_val,
+             sig_lbl +
+             "\nEntry: " + str.tostring(entry_price, "#.###") +
+             "\nSL: "    + str.tostring(sl_price,    "#.###") + " (-" + str.tostring(to_pips(sl_dist))  + " pips)" +
+             "\nTP1: "   + str.tostring(tp1_price,   "#.###") + " (+" + str.tostring(to_pips(tp1_dist)) + " pips)" +
+             "\nTP2: "   + str.tostring(tp2_price,   "#.###") + " (+" + str.tostring(to_pips(tp2_dist)) + " pips)" +
+             "\nTP3: "   + str.tostring(tp3_price,   "#.###") + " (+" + str.tostring(to_pips(tp3_dist)) + " pips)" +
+             "\nTFs: "   + str.tostring(bull_count)  + "/5 Bullish",
+             color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+// ─────────────────────────────────────────────
+//  TRADE OPEN — SELL
+// ─────────────────────────────────────────────
+if sell_signal and trade_dir == 0
+    delete_trade_lines()
+    entry_price  := close
+    sl_price     := close + sl_dist
+    tp1_price    := close - tp1_dist
+    tp2_price    := close - tp2_dist
+    tp3_price    := close - tp3_dist
+    trade_dir    := -1
+    tp1_hit      := false
+    tp2_hit      := false
+    tp3_hit      := false
+    total_sigs   := total_sigs + 1
+
+    if i_show_lines
+        ln_sl    := line.new(bar_index, sl_price,    bar_index + 1, sl_price,    color=color.red,   style=line.style_dashed, width=2)
+        ln_entry := line.new(bar_index, entry_price, bar_index + 1, entry_price, color=color.white,  style=line.style_solid,  width=2)
+        ln_tp1   := line.new(bar_index, tp1_price,   bar_index + 1, tp1_price,   color=color.lime,   style=line.style_dotted, width=1)
+        ln_tp2   := line.new(bar_index, tp2_price,   bar_index + 1, tp2_price,   color=color.green,  style=line.style_dotted, width=2)
+        ln_tp3   := line.new(bar_index, tp3_price,   bar_index + 1, tp3_price,   color=color.teal,   style=line.style_dotted, width=3)
+
+    if i_show_labels
+        sig_lbl = strong_sell ? "🔴🔴 STRONG SELL" : "🔴 SELL"
+        label.new(bar_index, high + atr_val,
+             sig_lbl +
+             "\nEntry: " + str.tostring(entry_price, "#.###") +
+             "\nSL: "    + str.tostring(sl_price,    "#.###") + " (+" + str.tostring(to_pips(sl_dist))  + " pips)" +
+             "\nTP1: "   + str.tostring(tp1_price,   "#.###") + " (-" + str.tostring(to_pips(tp1_dist)) + " pips)" +
+             "\nTP2: "   + str.tostring(tp2_price,   "#.###") + " (-" + str.tostring(to_pips(tp2_dist)) + " pips)" +
+             "\nTP3: "   + str.tostring(tp3_price,   "#.###") + " (-" + str.tostring(to_pips(tp3_dist)) + " pips)" +
+             "\nTFs: "   + str.tostring(bear_count)  + "/5 Bearish",
+             color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+// ─────────────────────────────────────────────
+//  EXTEND LINES WHILE TRADE IS ACTIVE
+// ─────────────────────────────────────────────
+if trade_dir != 0 and i_show_lines
+    if not na(ln_entry)
+        line.set_x2(ln_entry, bar_index + 1)
+    if not na(ln_sl)
+        line.set_x2(ln_sl,    bar_index + 1)
+    if not na(ln_tp1)
+        line.set_x2(ln_tp1,   bar_index + 1)
+    if not na(ln_tp2)
+        line.set_x2(ln_tp2,   bar_index + 1)
+    if not na(ln_tp3)
+        line.set_x2(ln_tp3,   bar_index + 1)
+
+// ─────────────────────────────────────────────
+//  TRADE EXIT — LONG
+// ─────────────────────────────────────────────
+if trade_dir == 1
+    if not tp1_hit and high >= tp1_price
+        tp1_hit := true
+        label.new(bar_index, tp1_price, "✅ TP1 HIT\n(+" + str.tostring(to_pips(tp1_dist)) + " pips)",
+             color=color.new(color.green, 20), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+    if not tp2_hit and high >= tp2_price
+        tp2_hit := true
+        label.new(bar_index, tp2_price, "✅ TP2 HIT\n(+" + str.tostring(to_pips(tp2_dist)) + " pips)",
+             color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+    if not tp3_hit and high >= tp3_price
+        tp3_hit     := true
+        total_wins  := total_wins + 1
+        total_pips  := total_pips + to_pips(tp3_dist)
+        label.new(bar_index, tp3_price, "✅ TP3 HIT\n(+" + str.tostring(to_pips(tp3_dist)) + " pips)",
+             color=color.teal, textcolor=color.white, style=label.style_label_down, size=size.small)
+        delete_trade_lines()
+        trade_dir   := 0
+
+    if trade_dir == 1 and low <= sl_price
+        total_losses := total_losses + 1
+        total_pips   := total_pips - to_pips(sl_dist)
+        if tp1_hit
+            total_wins := total_wins + 1
+        label.new(bar_index, sl_price, "❌ SL HIT\n(-" + str.tostring(to_pips(sl_dist)) + " pips)",
+             color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_up, size=size.small)
+        delete_trade_lines()
+        trade_dir := 0
+
+// ─────────────────────────────────────────────
+//  TRADE EXIT — SHORT
+// ─────────────────────────────────────────────
+if trade_dir == -1
+    if not tp1_hit and low <= tp1_price
+        tp1_hit := true
+        label.new(bar_index, tp1_price, "✅ TP1 HIT\n(+" + str.tostring(to_pips(tp1_dist)) + " pips)",
+             color=color.new(color.green, 20), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+    if not tp2_hit and low <= tp2_price
+        tp2_hit := true
+        label.new(bar_index, tp2_price, "✅ TP2 HIT\n(+" + str.tostring(to_pips(tp2_dist)) + " pips)",
+             color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+    if not tp3_hit and low <= tp3_price
+        tp3_hit     := true
+        total_wins  := total_wins + 1
+        total_pips  := total_pips + to_pips(tp3_dist)
+        label.new(bar_index, tp3_price, "✅ TP3 HIT\n(+" + str.tostring(to_pips(tp3_dist)) + " pips)",
+             color=color.teal, textcolor=color.white, style=label.style_label_up, size=size.small)
+        delete_trade_lines()
+        trade_dir   := 0
+
+    if trade_dir == -1 and high >= sl_price
+        total_losses := total_losses + 1
+        total_pips   := total_pips - to_pips(sl_dist)
+        if tp1_hit
+            total_wins := total_wins + 1
+        label.new(bar_index, sl_price, "❌ SL HIT\n(-" + str.tostring(to_pips(sl_dist)) + " pips)",
+             color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_down, size=size.small)
+        delete_trade_lines()
+        trade_dir := 0
+
+// ─────────────────────────────────────────────
+//  SESSION BACKGROUND HIGHLIGHT
+// ─────────────────────────────────────────────
+sess_bg = i_show_bg_sess and in_london  ? color.new(color.blue,   95) :
+          i_show_bg_sess and in_newyork ? color.new(color.purple, 95) :
+          i_show_bg_sess and in_tokyo   ? color.new(color.orange, 95) : na
+bgcolor(sess_bg, title="Session Background")
+
+// ─────────────────────────────────────────────
+//  TRADE BACKGROUND
+// ─────────────────────────────────────────────
+trade_bg = i_show_trade_bg and trade_dir == 1  ? color.new(color.green, 92) :
+           i_show_trade_bg and trade_dir == -1 ? color.new(color.red,   92) : na
+bgcolor(trade_bg, title="Trade Background")
+
+// ─────────────────────────────────────────────
+//  SIGNAL PLOTS (triangles)
+// ─────────────────────────────────────────────
+plotshape(buy_signal,  title="BUY Signal",  location=location.belowbar, style=shape.triangleup,   size=size.normal, color=color.green, text="BUY")
+plotshape(sell_signal, title="SELL Signal", location=location.abovebar, style=shape.triangledown, size=size.normal, color=color.red,   text="SELL")
+
+// ─────────────────────────────────────────────
+//  DASHBOARD TABLE
+// ─────────────────────────────────────────────
+tbl_pos = i_table_pos == "Top Right"    ? position.top_right :
+          i_table_pos == "Top Left"     ? position.top_left  :
+          i_table_pos == "Bottom Right" ? position.bottom_right : position.bottom_left
+
+var table dash = table.new(tbl_pos, 7, 9, border_width=1,
+     frame_color=color.gray, border_color=color.gray,
+     bgcolor=color.new(color.black, 20))
+
+if i_show_table and barstate.islast
+    // ── Color constants ──
+    c_head   = color.new(color.navy,  20)
+    c_bull   = color.new(color.green, 70)
+    c_bear   = color.new(color.red,   70)
+    c_neut   = color.new(color.gray,  50)
+    c_txt    = color.white
+
+    // ── Header row (row 0) ──
+    table.cell(dash, 0, 0, "Timeframe", bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 0, "Trend",     bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 0, "EMA",       bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 0, "RSI",       bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 0, "MACD",      bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 0, "ADX",       bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 0, "Signal",    bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+
+    // ── 1M row (row 1) ──
+    bg_1m  = bull_1m ? c_bull : c_bear
+    ema_1m = ef_1m and es_1m ? "🟢🟢" : ef_1m or es_1m ? "🟡" : "🔴🔴"
+    table.cell(dash, 0, 1, "1M",                                               bgcolor=bg_1m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 1, bull_1m ? "🟢 UP" : "🔴 DOWN",                    bgcolor=bg_1m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 1, ema_1m,                                             bgcolor=bg_1m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 1, (rb_1m ? "🟢 " : "🔴 ") + str.tostring(math.round(rv_1m)), bgcolor=bg_1m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 1, mb_1m ? "🟢" : "🔴",                              bgcolor=bg_1m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 1, (as_1m ? "🟢 " : "🟡 ") + str.tostring(math.round(av_1m)), bgcolor=bg_1m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 1, bull_1m ? "BUY 🟢" : "SELL 🔴",                   bgcolor=bg_1m, text_color=c_txt, text_size=size.tiny)
+
+    // ── 5M row (row 2) ──
+    bg_5m  = bull_5m ? c_bull : c_bear
+    ema_5m = ef_5m and es_5m ? "🟢🟢" : ef_5m or es_5m ? "🟡" : "🔴🔴"
+    table.cell(dash, 0, 2, "5M",                                               bgcolor=bg_5m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 2, bull_5m ? "🟢 UP" : "🔴 DOWN",                    bgcolor=bg_5m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 2, ema_5m,                                             bgcolor=bg_5m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 2, (rb_5m ? "🟢 " : "🔴 ") + str.tostring(math.round(rv_5m)), bgcolor=bg_5m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 2, mb_5m ? "🟢" : "🔴",                              bgcolor=bg_5m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 2, (as_5m ? "🟢 " : "🟡 ") + str.tostring(math.round(av_5m)), bgcolor=bg_5m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 2, bull_5m ? "BUY 🟢" : "SELL 🔴",                   bgcolor=bg_5m, text_color=c_txt, text_size=size.tiny)
+
+    // ── 15M row (row 3) ──
+    bg_15m  = bull_15m ? c_bull : c_bear
+    ema_15m = ef_15m and es_15m ? "🟢🟢" : ef_15m or es_15m ? "🟡" : "🔴🔴"
+    table.cell(dash, 0, 3, "15M",                                              bgcolor=bg_15m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 3, bull_15m ? "🟢 UP" : "🔴 DOWN",                   bgcolor=bg_15m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 3, ema_15m,                                            bgcolor=bg_15m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 3, (rb_15m ? "🟢 " : "🔴 ") + str.tostring(math.round(rv_15m)), bgcolor=bg_15m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 3, mb_15m ? "🟢" : "🔴",                             bgcolor=bg_15m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 3, (as_15m ? "🟢 " : "🟡 ") + str.tostring(math.round(av_15m)), bgcolor=bg_15m, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 3, bull_15m ? "BUY 🟢" : "SELL 🔴",                  bgcolor=bg_15m, text_color=c_txt, text_size=size.tiny)
+
+    // ── 1H row (row 4) ──
+    bg_1h  = bull_1h ? c_bull : c_bear
+    ema_1h = ef_1h and es_1h ? "🟢🟢" : ef_1h or es_1h ? "🟡" : "🔴🔴"
+    table.cell(dash, 0, 4, "1H",                                               bgcolor=bg_1h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 4, bull_1h ? "🟢 UP" : "🔴 DOWN",                    bgcolor=bg_1h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 4, ema_1h,                                             bgcolor=bg_1h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 4, (rb_1h ? "🟢 " : "🔴 ") + str.tostring(math.round(rv_1h)), bgcolor=bg_1h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 4, mb_1h ? "🟢" : "🔴",                              bgcolor=bg_1h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 4, (as_1h ? "🟢 " : "🟡 ") + str.tostring(math.round(av_1h)), bgcolor=bg_1h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 4, bull_1h ? "BUY 🟢" : "SELL 🔴",                   bgcolor=bg_1h, text_color=c_txt, text_size=size.tiny)
+
+    // ── 4H row (row 5) ──
+    bg_4h  = bull_4h ? c_bull : c_bear
+    ema_4h = ef_4h and es_4h ? "🟢🟢" : ef_4h or es_4h ? "🟡" : "🔴🔴"
+    table.cell(dash, 0, 5, "4H",                                               bgcolor=bg_4h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 5, bull_4h ? "🟢 UP" : "🔴 DOWN",                    bgcolor=bg_4h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 5, ema_4h,                                             bgcolor=bg_4h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 5, (rb_4h ? "🟢 " : "🔴 ") + str.tostring(math.round(rv_4h)), bgcolor=bg_4h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 5, mb_4h ? "🟢" : "🔴",                              bgcolor=bg_4h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 5, (as_4h ? "🟢 " : "🟡 ") + str.tostring(math.round(av_4h)), bgcolor=bg_4h, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 5, bull_4h ? "BUY 🟢" : "SELL 🔴",                   bgcolor=bg_4h, text_color=c_txt, text_size=size.tiny)
+
+    // ── Separator row (row 6) ──
+    table.cell(dash, 0, 6, "─────", bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 6, "─────", bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 6, "─────", bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 6, "─────", bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 6, "─────", bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 6, "─────", bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 6, "─────", bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+
+    // ── Overall signal row (row 7) ──
+    overall_txt = strong_buy  ? "🟢🟢 STRONG BUY"  :
+                  regular_buy ? "🟢 BUY"             :
+                  weak_buy    ? "🟡 WEAK BUY"        :
+                  strong_sell ? "🔴🔴 STRONG SELL"   :
+                  regular_sell? "🔴 SELL"             :
+                  weak_sell   ? "🟡 WEAK SELL"       : "⚪ NEUTRAL"
+    overall_bg  = strong_buy or regular_buy   ? color.new(color.green, 30) :
+                  strong_sell or regular_sell ? color.new(color.red,   30) : c_neut
+    wr_pct  = total_sigs > 0 ? str.tostring(math.round(total_wins / total_sigs * 100)) + "%" : "N/A"
+    pips_str = (total_pips >= 0 ? "+" : "") + str.tostring(math.round(total_pips)) + " pips"
+
+    table.cell(dash, 0, 7, "OVERALL",                                          bgcolor=c_head, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 7, str.tostring(bull_count) + "/5 🟢",                bgcolor=overall_bg, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 7, "",                                                 bgcolor=overall_bg, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 7, "",                                                 bgcolor=overall_bg, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 7, "",                                                 bgcolor=overall_bg, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 7, "WR: " + wr_pct,                                   bgcolor=overall_bg, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 7, overall_txt,                                        bgcolor=overall_bg, text_color=c_txt, text_size=size.tiny)
+
+    // ── Stats row (row 8) ──
+    trade_status = trade_dir == 1 ? "LONG 🟢" : trade_dir == -1 ? "SHORT 🔴" : "Flat ⬜"
+    sess_str     = in_london ? "London 🔵" : in_newyork ? "New York 🟣" : in_tokyo ? "Tokyo 🟠" : "Off-session"
+
+    table.cell(dash, 0, 8, "Stats",                                            bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 1, 8, "Sigs: " + str.tostring(total_sigs),               bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 2, 8, "W:" + str.tostring(total_wins),                   bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 3, 8, "L:" + str.tostring(total_losses),                 bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 4, 8, pips_str,                                           bgcolor=total_pips >= 0 ? color.new(color.green, 50) : color.new(color.red, 50), text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 5, 8, trade_status,                                       bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+    table.cell(dash, 6, 8, sess_str,                                           bgcolor=c_neut, text_color=c_txt, text_size=size.tiny)
+
+// ─────────────────────────────────────────────
+//  ALERT CONDITIONS
+// ─────────────────────────────────────────────
+strong_buy_msg = "🟢🟢 STRONG BUY | USDJPY MTF" +
+                 " | Entry: " + str.tostring(close, "#.###") +
+                 " | SL: "    + str.tostring(close - sl_dist, "#.###") + " (-" + str.tostring(to_pips(sl_dist)) + " pips)" +
+                 " | TP1: "   + str.tostring(close + tp1_dist, "#.###") +
+                 " | TP2: "   + str.tostring(close + tp2_dist, "#.###") +
+                 " | TP3: "   + str.tostring(close + tp3_dist, "#.###") +
+                 " | TFs: "   + str.tostring(bull_count) + "/5 Bullish"
+
+strong_sell_msg = "🔴🔴 STRONG SELL | USDJPY MTF" +
+                  " | Entry: " + str.tostring(close, "#.###") +
+                  " | SL: "    + str.tostring(close + sl_dist, "#.###") + " (+" + str.tostring(to_pips(sl_dist)) + " pips)" +
+                  " | TP1: "   + str.tostring(close - tp1_dist, "#.###") +
+                  " | TP2: "   + str.tostring(close - tp2_dist, "#.###") +
+                  " | TP3: "   + str.tostring(close - tp3_dist, "#.###") +
+                  " | TFs: "   + str.tostring(bear_count) + "/5 Bearish"
+
+alertcondition(buy_signal,   title="STRONG BUY Signal",  message=strong_buy_msg)
+alertcondition(sell_signal,  title="STRONG SELL Signal", message=strong_sell_msg)
+alertcondition(strong_buy,   title="Strong Buy (any bar)",  message="🟢🟢 STRONG BUY | All timeframes bullish | USDJPY MTF")
+alertcondition(strong_sell,  title="Strong Sell (any bar)", message="🔴🔴 STRONG SELL | All timeframes bearish | USDJPY MTF")
+alertcondition(regular_buy,  title="BUY Signal",  message="🟢 BUY | " + str.tostring(bull_count) + "/5 TFs bullish | USDJPY MTF")
+alertcondition(regular_sell, title="SELL Signal", message="🔴 SELL | " + str.tostring(bear_count) + "/5 TFs bearish | USDJPY MTF")
+
+// TP / SL event detection
+tp1_hit_evt = tp1_hit and not tp1_hit[1]
+tp2_hit_evt = tp2_hit and not tp2_hit[1]
+tp3_hit_evt = tp3_hit and not tp3_hit[1]
+sl_hit_evt  = (trade_dir[1] == 1 or trade_dir[1] == -1) and trade_dir == 0 and not tp3_hit_evt
+
+alertcondition(tp1_hit_evt, title="TP1 Hit", message="✅ TP1 HIT | USDJPY MTF Analysis")
+alertcondition(tp2_hit_evt, title="TP2 Hit", message="✅ TP2 HIT | USDJPY MTF Analysis")
+alertcondition(tp3_hit_evt, title="TP3 Hit", message="✅ TP3 HIT | USDJPY MTF Analysis")
+alertcondition(sl_hit_evt,  title="SL Hit",  message="❌ SL HIT  | USDJPY MTF Analysis")

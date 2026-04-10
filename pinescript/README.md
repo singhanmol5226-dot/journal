@@ -1,6 +1,6 @@
 # DXY–USDJPY Correlation Trading Signals
 
-> **Pine Script v5 Indicator for TradingView**
+> **Pine Script v6 Indicator for TradingView**
 > Designed for USDJPY 1-minute scalping | Max SL 30 pips | TP target 80–100 pips
 
 ---

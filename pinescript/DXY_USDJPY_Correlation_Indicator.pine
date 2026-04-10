@@ -2,7 +2,7 @@
 // © DXY-USDJPY Correlation Indicator v1.0
 // Designed for USDJPY 1-Minute Scalping | Max SL: 30 pips | TP: 80-100 pips
 
-//@version=5
+//@version=6
 indicator("DXY-USDJPY Correlation Signals", shorttitle="DXY-JPY Corr", overlay=true, max_lines_count=20, max_labels_count=50, max_boxes_count=5)
 
 // ─────────────────────────────────────────────
@@ -16,7 +16,7 @@ grp_macd    = "MACD Settings"
 grp_display = "Display Settings"
 grp_dxy     = "DXY Symbol"
 
-i_dxy_sym       = input.symbol("TVC:DXY",   "DXY Symbol",                       group=grp_dxy)
+i_dxy_sym       = input.string("TVC:DXY",   "DXY Symbol",                       group=grp_dxy)
 
 i_corr_short    = input.int(20,  "Short Correlation Period",  minval=5,  maxval=200, group=grp_corr)
 i_corr_med      = input.int(50,  "Medium Correlation Period", minval=10, maxval=500, group=grp_corr)
@@ -391,7 +391,8 @@ var table corr_table = table.new(position.top_right, 2, 9, border_width=1,
 
 if i_show_panel and barstate.islast
     // Header
-    table.cell(corr_table, 0, 0, "DXY-JPY CORRELATION",  bgcolor=color.new(color.navy, 20),  text_color=color.white, text_size=size.small, colspan=2)
+    table.cell(corr_table, 0, 0, "DXY-JPY CORRELATION",  bgcolor=color.new(color.navy, 20),  text_color=color.white, text_size=size.small)
+    table.cell(corr_table, 1, 0, "",                      bgcolor=color.new(color.navy, 20),  text_color=color.white, text_size=size.small)
     // Correlation values
     table.cell(corr_table, 0, 1, "Short Corr (" + str.tostring(i_corr_short) + ")", bgcolor=color.new(color.gray, 70), text_color=color.white, text_size=size.tiny)
     table.cell(corr_table, 1, 1, str.tostring(corr_short, "#.##"),  bgcolor=color.new(color.gray, 70), text_color=corr_short >= i_corr_thresh ? color.lime : color.orange, text_size=size.tiny)
