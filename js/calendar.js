@@ -2,6 +2,9 @@
  * calendar.js — Trading Calendar View
  */
 
+// Maximum daily P&L used to scale color intensity (adjust to your typical P&L range)
+const MAX_PNL_FOR_INTENSITY = 2000;
+
 let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth(); // 0-indexed
 
@@ -69,7 +72,7 @@ function renderCalendar() {
     const trades = dayMap[dateStr];
     if (!trades || !trades.length) return '';
     const pnl = trades.reduce((s, t) => s + t.pnl, 0);
-    const intensity = Math.min(Math.abs(pnl) / 2000, 1);
+    const intensity = Math.min(Math.abs(pnl) / MAX_PNL_FOR_INTENSITY, 1);
     if (pnl > 0) {
       const alpha = 0.15 + intensity * 0.7;
       return `background: rgba(0, 200, 150, ${alpha.toFixed(2)});`;

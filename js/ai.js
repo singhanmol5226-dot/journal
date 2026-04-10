@@ -2,6 +2,10 @@
  * ai.js — AI Analysis: Built-in Insights + OpenAI Integration
  */
 
+// Thresholds for built-in insight detection
+const OVERTRADING_THRESHOLD = 5; // trades per day considered overtrading
+const MAX_LOSS_BAD_THRESHOLD = -1000; // single loss below this is flagged as high-risk
+
 // Local escapeHtml fallback (app.js defines the authoritative version globally)
 function _aiEscapeHtml(str) {
   return String(str || '')
@@ -156,9 +160,9 @@ function generateBuiltinInsights(trades) {
     if (!t.entryDate) continue;
     tradesPerDay[t.entryDate] = (tradesPerDay[t.entryDate] || 0) + 1;
   }
-  const overtradeDays = Object.values(tradesPerDay).filter(n => n >= 5).length;
+  const overtradeDays = Object.values(tradesPerDay).filter(n => n >= OVERTRADING_THRESHOLD).length;
   if (overtradeDays > 0) {
-    insights.push({ icon: '🔥', title: 'Overtrading Detected', body: `You had ${overtradeDays} day(s) with 5 or more trades. Overtrading often leads to emotional decisions.`, type: 'bad' });
+    insights.push({ icon: '🔥', title: 'Overtrading Detected', body: `You had ${overtradeDays} day(s) with ${OVERTRADING_THRESHOLD} or more trades. Overtrading often leads to emotional decisions.`, type: 'bad' });
   }
 
   // ── Revenge trading detector ───────────────────────────────────────────────
@@ -191,7 +195,7 @@ function generateBuiltinInsights(trades) {
     insights.push({ icon: '⚖️', title: 'Risk-Reward Analysis', body: `Average planned R:R is ${avgRR.toFixed(2)}:1 across ${rrTrades.length} trades with stop/target set. ${avgRR >= 2 ? 'Excellent!' : avgRR >= 1 ? 'Good, aim for 2:1+.' : 'Consider improving your R:R.'}`, type: avgRR >= 2 ? 'good' : avgRR >= 1 ? 'neutral' : 'bad' });
 
     const maxLoss = Math.min(...enriched.map(t => t.pnl));
-    insights.push({ icon: '🛡️', title: 'Max Single Loss', body: `Your worst trade lost ${Math.abs(maxLoss).toFixed(2)}. Make sure this aligns with your risk per trade rules.`, type: maxLoss < -1000 ? 'bad' : 'neutral' });
+    insights.push({ icon: '🛡️', title: 'Max Single Loss', body: `Your worst trade lost ${Math.abs(maxLoss).toFixed(2)}. Make sure this aligns with your risk per trade rules.`, type: maxLoss < MAX_LOSS_BAD_THRESHOLD ? 'bad' : 'neutral' });
   }
 
   // ── Morning vs Afternoon ───────────────────────────────────────────────────

@@ -1031,7 +1031,7 @@ function renderMonthlyReport(enriched, c) {
       <td>${s.trades}</td>
       <td>${s.wr}%</td>
       <td class="${s.pnl >= 0 ? 'positive' : 'negative'}">${formatPnL(s.pnl, c)}</td>
-      <td class="positive">+${formatPnL(s.bestDay, c)}</td>
+      <td class="positive">${s.bestDay >= 0 ? '+' : ''}${formatPnL(s.bestDay, c)}</td>
       <td class="negative">${formatPnL(s.worstDay, c)}</td>
     </tr>`;
   }).join('');
