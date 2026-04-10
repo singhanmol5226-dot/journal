@@ -260,7 +260,11 @@ When a trade closes, a label appears at the exit price:
 | TFs for STRONG signal | 5 | How many of 5 timeframes must agree for STRONG BUY/SELL |
 | TFs for BUY/SELL signal | 4 | How many for regular BUY/SELL |
 | Also signal on BUY/SELL | OFF | Enable this to also get signals on 4/5 agreement (not just 5/5) |
-| Signal Cooldown (bars) | 10 | Minimum bars between signals — prevents back-to-back entries |
+| Signal Cooldown (bars) | 60 | Minimum bars between signals — 60 bars = 1 hour on 1M chart |
+| Enable Volume Filter | OFF | Only signal when volume exceeds its moving average (confirms real participation) |
+| Volume MA Length | 20 | Period for volume moving average used in the volume filter |
+| Enable Minimum Move Filter | ON | Requires a minimum price move (0.3× ATR) before signaling — filters flat/choppy conditions |
+| Min EMA Distance (pips) | 2.0 | Price must be at least this far from EMA9 to confirm direction (avoids whipsaw entries) |
 
 ### Stop Loss & Take Profit
 
@@ -268,12 +272,14 @@ When a trade closes, a label appears at the exit price:
 |---|---|---|
 | SL Method | ATR | ATR-based SL (dynamic) or Fixed Pips (static) |
 | ATR Period | 14 | Period for ATR calculation |
-| ATR Multiplier | 1.5 | SL = ATR × multiplier |
+| ATR Source Timeframe | 15M | Timeframe for ATR — 15M gives more meaningful volatility than 5M for SL sizing |
+| ATR Multiplier | 2.0 | SL = ATR × multiplier |
+| Min SL (pips) | 10 | Floor — SL will never be smaller than this (prevents tick-sized stops) |
 | Max SL (pips) | 30 | Hard cap — SL will never exceed this |
 | Fixed SL (pips) | 25 | Used only when SL Method = Fixed Pips |
-| TP1 R:R Ratio | 2.0 | TP1 = SL × 2.0 (e.g., 25 pip SL → 50 pip TP1) |
-| TP2 R:R Ratio | 3.0 | TP2 = SL × 3.0 (e.g., 25 pip SL → 75 pip TP2) |
-| TP3 R:R Ratio | 4.0 | TP3 = SL × 4.0 (e.g., 25 pip SL → 100 pip TP3) |
+| TP1 R:R Ratio | 2.0 | TP1 = SL × 2.0 (e.g., 10 pip min SL → 20 pip TP1; illustration only — actual SL depends on ATR) |
+| TP2 R:R Ratio | 3.0 | TP2 = SL × 3.0 |
+| TP3 R:R Ratio | 4.0 | TP3 = SL × 4.0 |
 
 ### Display Settings
 
