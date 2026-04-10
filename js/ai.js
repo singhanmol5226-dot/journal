@@ -2,6 +2,14 @@
  * ai.js — AI Analysis: Built-in Insights + OpenAI Integration
  */
 
+// Local escapeHtml fallback (app.js defines the authoritative version globally)
+function _aiEscapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function _esc(str) { return typeof escapeHtml === 'function' ? escapeHtml(str) : _aiEscapeHtml(str); }
+
 let aiChatHistory = [];
 let aiOpenAIKey = '';
 
@@ -19,8 +27,8 @@ function renderAISection() {
         <div class="insight-card insight-${ins.type}">
           <div class="insight-icon">${ins.icon}</div>
           <div class="insight-content">
-            <div class="insight-title">${escapeHtml(ins.title)}</div>
-            <div class="insight-body">${escapeHtml(ins.body)}</div>
+            <div class="insight-title">${_esc(ins.title)}</div>
+            <div class="insight-body">${_esc(ins.body)}</div>
           </div>
         </div>
       `).join('')
@@ -45,7 +53,7 @@ function renderAISection() {
         <div class="openai-key-section">
           <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px;">OpenAI API Key (stored locally)</label>
           <div style="display:flex;gap:8px;">
-            <input type="password" id="openaiKeyInput" class="form-input" placeholder="sk-..." value="${escapeHtml(savedKey)}" style="flex:1;">
+            <input type="password" id="openaiKeyInput" class="form-input" placeholder="sk-..." value="${_esc(savedKey)}" style="flex:1;">
             <button class="btn btn-primary btn-sm" onclick="saveOpenAIKey()">Save</button>
           </div>
           <p style="font-size:12px;color:var(--text-secondary);margin-top:6px;">
@@ -346,7 +354,7 @@ function renderChatHistory() {
   container.innerHTML = aiChatHistory.map(m => `
     <div class="chat-message ${m.role === 'user' ? 'user-message' : 'ai-message'}">
       <span class="chat-role">${m.role === 'user' ? '👤 You' : '🤖 AI'}</span>
-      <div class="chat-text">${escapeHtml(m.content).replace(/\n/g, '<br>')}</div>
+      <div class="chat-text">${_esc(m.content).replace(/\n/g, '<br>')}</div>
     </div>
   `).join('');
   container.scrollTop = container.scrollHeight;

@@ -176,7 +176,6 @@ function navigateCalendar(dir) {
 }
 
 function showDayDetail(dateStr) {
-  const monthStr = dateStr.slice(0, 7);
   const dayTrades = allTrades
     .filter(t => (t.entryDate || '').startsWith(dateStr))
     .map(t => ({ ...t, pnl: calcPnL(t) }));
