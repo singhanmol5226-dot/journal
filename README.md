@@ -1,119 +1,170 @@
-# 📈 Trade Journal — Offline Trading Journal
+# 📈 MT5 Trade Journal
 
-A **fully offline, browser-based trade journaling application** that works entirely without internet after the first load. All your data is stored locally in your browser using **IndexedDB** — your trades will **never disappear** between sessions.
-
----
-
-## 🚀 How to Use
-
-1. **Download or clone** this repository
-2. **Open `index.html`** in any modern browser (Chrome, Edge, Firefox)
-3. That's it! No server, no install, no internet required after first load
-
-> **Tip:** For full offline support including Chart.js, open the app once with internet so the service worker can cache everything. After that, it works 100% offline.
+A complete, self-hosted trading journal with **MetaTrader 5 integration**, built on a FastAPI/SQLite backend and a dark-themed SPA frontend.
 
 ---
 
 ## ✨ Features
 
-### 💾 Data Persistence (Never Lose Trades Again)
-- Uses **IndexedDB** for all storage — trades survive browser restarts, tab closes, and computer reboots
-- Visible **confirmation toast** whenever a trade is saved
-- **Export to JSON** and **Import from JSON** for backup/restore
-
-### 📝 Detailed Trade Entry
-- Entry & Exit date/time
-- Instrument/Symbol (customizable list + custom input)
-- Trade Type: Buy (Long) / Sell (Short)
-- Entry Price, Exit Price, Quantity/Lot Size, Fees/Commission
-- Stop Loss and Target prices
-- Strategy (Breakout, Reversal, Scalping, Swing, and more + custom)
-- Setup Tags
-- Emotion/Psychology before and during trade
-- Notes/Remarks text area
-- Multiple screenshot uploads (drag & drop, paste, file picker)
-- **Auto-calculated P&L and Outcome** (Win/Loss/Breakeven)
-
-### 📸 Screenshot Support
-- **Drag & drop** chart screenshots into the dropzone
-- **Paste from clipboard** (Ctrl+V) to capture screenshots instantly
-- **File picker** for browsing your files
-- Thumbnails in trade list with click-to-expand lightbox
-- Multiple screenshots per trade
-- Stored as base64 in IndexedDB — fully offline
-
-### 📊 Performance Dashboard
-**Summary Cards:**
-- Total Trades | Win Rate | Total P&L
-- Average Win vs Average Loss
-- Largest Win & Largest Loss
-- Profit Factor | Average R:R
-- Current Winning/Losing Streak
-- Max Drawdown | Expectancy per trade
-
-**Charts & Visualizations:**
-1. Equity Curve (Cumulative P&L over time)
-2. Daily P&L Bar Chart (green/red)
-3. Win/Loss Donut Chart
-4. P&L by Strategy
-5. P&L by Instrument
-6. Trade Distribution by Day of Week
-7. Trade Distribution by Hour
-8. Emotion vs Performance
-9. Risk-Reward Scatter Plot
-
-### 📋 Trade Log
-- Sortable table (click column headers)
-- Filter by date range, instrument, strategy, outcome
-- Search by notes/remarks/tags
-- View full trade details with screenshots
-- Edit and delete trades (with confirmation)
-
-### ⚙️ Settings
-- Currency symbol preference (₹, $, €, etc.)
-- Customizable instrument/symbol list
-- Export all data to JSON
-- Import from JSON (merge or replace)
-- Clear all data option
-
-### 🌐 Fully Offline
-- Service Worker caches all assets and Chart.js CDN
-- Works offline after first internet load
+- **MT5 Auto-Sync** — An MQL5 Expert Advisor exports your closed trades to a JSON file every 5 seconds; the backend watches the file and syncs trades into SQLite automatically.
+- **Dark-Themed SPA** — Same polished dark UI as the offline version, now powered by a REST API.
+- **Trade Annotations** — Add strategy, setup tags, emotions, and notes to any trade (including MT5-imported ones).
+- **Screenshots** — Attach chart screenshots to trades via drag & drop, file browser, or clipboard paste.
+- **Full Analytics** — Win rate, profit factor, expectancy, max drawdown, equity curve, and breakdowns by strategy, instrument, day of week, hour, and month.
+- **Interactive Calendar** — Color-coded monthly calendar view with daily P&L and trade counts.
+- **AI Analysis** — Built-in behavioral insights + OpenAI GPT-4o-mini chat coach.
+- **Reports** — Monthly, weekly, and yearly summaries with highlighted best/worst periods.
+- **Import / Export** — JSON backup and restore, compatible with the offline journal.
+- **Daily Goals** — Set a daily P&L target and max loss limit; track progress live.
+- **Achievements** — Gamified milestones (first trade, win streaks, profitable month, profit factor ≥ 2, etc.).
 
 ---
 
-## 📁 File Structure
+## 🗂️ Project Structure
 
 ```
-index.html          — Main HTML file
-css/style.css       — Dark theme styles
-js/app.js           — Main app logic, routing, UI
-js/db.js            — IndexedDB wrapper (CRUD operations)
-js/analytics.js     — All analytics calculations
-js/charts.js        — Chart.js rendering
-sw.js               — Service Worker for offline support
-README.md           — This file
+journal/
+├── mt5_ea/
+│   └── TradeExporter.mq5   # MQL5 Expert Advisor for MT5
+├── backend/
+│   ├── server.py            # FastAPI REST API
+│   ├── mt5_sync.py          # Trade sync logic
+│   ├── requirements.txt     # Python dependencies
+│   ├── journal.db           # SQLite database (auto-created)
+│   └── screenshots/         # Uploaded screenshot storage (auto-created)
+├── frontend/
+│   ├── index.html           # Single-page application
+│   ├── css/style.css        # Dark-themed stylesheet
+│   └── js/
+│       ├── app.js           # Core app + navigation
+│       ├── analytics.js     # Analytics calculations
+│       ├── charts.js        # Chart.js renderers
+│       ├── calendar.js      # Calendar view
+│       ├── ai.js            # AI analysis
+│       └── mt5sync.js       # MT5 sync UI
+├── index.html               # Original offline version (IndexedDB)
+├── css/style.css
+├── js/
+└── README.md
 ```
 
 ---
 
-## 🖼️ Screenshots
+## ⚙️ Prerequisites
 
-*(Add screenshots of your app here after setup)*
-
----
-
-## 🔧 Technical Details
-
-- **Pure HTML + CSS + JavaScript** — no frameworks, no build tools, no server
-- **IndexedDB** via native browser API — handles large data including base64 screenshots
-- **Chart.js 4.x** via CDN (cached offline by service worker)
-- Works by simply opening `index.html` — no `npm install` or setup required
+- **Python 3.9+**
+- **MetaTrader 5** (Windows) — optional; journal works without MT5 for manual entry
+- A modern browser (Chrome, Firefox, Edge)
 
 ---
 
-## 💾 Backup & Restore
+## 🚀 Setup
 
-1. Go to **Settings** → **Export to JSON** to download a backup file
-2. To restore: **Settings** → **Import from JSON** → choose your backup file
-3. Choose "Merge" to add to existing trades, or "Replace All" to restore fresh
+### 1. Install Python dependencies
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+### 2. Start the backend server
+
+```bash
+cd backend
+python server.py
+```
+
+The API will be available at **http://localhost:8000**.  
+The frontend SPA is served at **http://localhost:8000/app**.
+
+### 3. Install the MT5 Expert Advisor (optional)
+
+1. Open MetaTrader 5.
+2. Press **Ctrl+N** to open the Navigator panel.
+3. Go to **File → Open Data Folder**.
+4. Copy `mt5_ea/TradeExporter.mq5` into the `MQL5\Experts\` folder.
+5. In the Navigator, right-click **Expert Advisors → Refresh**.
+6. Drag the `TradeExporter` EA onto any chart.
+7. In the EA settings, enable **Allow DLL imports** and **Allow algo trading**, then click **OK**.
+8. The EA exports all closed trades to `MQL5\Files\mt5_trades.json` every 5 seconds.
+
+### 4. Configure the file path
+
+1. Open the journal at **http://localhost:8000/app**.
+2. Go to **MT5 Sync** in the sidebar.
+3. Enter the full path to `mt5_trades.json` (e.g. `C:\Users\YourName\AppData\Roaming\MetaQuotes\Terminal\<ID>\MQL5\Files\mt5_trades.json`).
+4. Click **Save**, then **Sync Now**.
+
+---
+
+## 📖 Usage Guide
+
+### Adding trades manually
+
+1. Click **Add Trade** in the sidebar.
+2. Fill in the trade details — symbol, entry/exit dates/prices, volume, stop loss, take profit.
+3. Add strategy, emotions, notes, and screenshots.
+4. Click **Save Trade**.
+
+### Viewing & annotating MT5 trades
+
+MT5-imported trades are automatically synced. Click **View** on any trade to see full details, then **Edit Annotations** to add strategy, emotion, and notes.
+
+### Analytics
+
+The **Analytics** section shows all performance metrics and charts. Data updates automatically when you switch to the section.
+
+### AI Analysis
+
+1. Go to **AI Analysis** → **OpenAI Analysis**.
+2. Enter your OpenAI API key (stored securely in the backend database, never sent anywhere except OpenAI).
+3. Click **Analyze My Trades with AI** or type a custom question.
+
+### Settings
+
+| Setting | Description |
+|---|---|
+| Currency Symbol | Displayed in all P&L figures (default: `$`) |
+| Default Instruments | Pre-populate the instrument dropdown when adding trades |
+| Daily P&L Goal | Shows a progress bar on the dashboard |
+| Max Daily Loss Limit | Shows a warning when today's loss exceeds the limit |
+| OpenAI API Key | Required for AI chat analysis |
+| MT5 Export File Path | Path to `mt5_trades.json` generated by the EA |
+
+---
+
+## 🔌 API Reference
+
+The backend exposes a REST API at `http://localhost:8000`. Key endpoints:
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/trades` | List trades (with filters) |
+| POST | `/api/trades` | Create a manual trade |
+| PUT | `/api/trades/{id}` | Update trade annotations |
+| DELETE | `/api/trades/{id}` | Delete a trade |
+| POST | `/api/sync` | Trigger manual MT5 sync |
+| GET | `/api/sync/status` | Get sync status |
+| GET | `/api/analytics` | Full analytics object |
+| GET | `/api/settings` | Get all settings |
+| PUT | `/api/settings` | Update settings |
+| POST | `/api/screenshots/{id}` | Upload a screenshot |
+| GET | `/api/export` | Export all data as JSON |
+| POST | `/api/import` | Import trades from JSON |
+
+Full interactive docs available at **http://localhost:8000/docs** (FastAPI Swagger UI).
+
+---
+
+## 🛡️ Data & Privacy
+
+- All data is stored **locally** in `backend/journal.db` (SQLite).
+- Screenshots are stored in `backend/screenshots/`.
+- Your OpenAI API key is stored only in the local database and is sent exclusively to `api.openai.com`.
+- No data is ever sent to any third-party service except OpenAI (and only when you explicitly trigger an AI analysis).
+
+---
+
+## 📦 Offline Version
+
+The original offline version (IndexedDB-based, no backend needed) is still available at `index.html` in the repository root. Open it directly in any browser — no server required.
