@@ -1,0 +1,7 @@
+.pyc
+__pycache__/
+*.pyc
+*.pyo
+backend/journal.db
+backend/screenshots/
+backend/*.db
